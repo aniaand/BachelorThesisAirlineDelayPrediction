@@ -1,0 +1,13 @@
+{
+  "source": "meteostat",
+  "airports": [
+    "ATL",
+    "ORD",
+    "DFW",
+    "DEN",
+    "LAX",
+    "JFK"
+  ],
+  "cached_at": "2026-08-31T22:24:54.322863",
+  "rows": 8502
+}
