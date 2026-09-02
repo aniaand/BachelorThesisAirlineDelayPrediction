@@ -1,0 +1,8 @@
+data/raw/
+data/processed/
+*.csv
+*.parquet
+.DS_Store
+__pycache__/
+.ipynb_checkpoints/
+.env
