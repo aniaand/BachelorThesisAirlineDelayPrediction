@@ -1,3 +1,22 @@
+'''
+Write a Python script (not a notebook) to process raw BTS On-Time Performance data for a flight delay prediction pipeline. It should:
+
+Load monthly BTS files directly from their .zip archives (no separate unzip step) and merge all months into one DataFrame.
+Print every column available in the raw data, so the schema can be audited against expectations.
+Subset the data to only the columns needed downstream (operational fields relevant to delay prediction — carrier, origin/dest, scheduled and actual times, delay causes, cancellation/diversion flags — but not yet trimmed for modeling-stage leakage, since that happens later at feature engineering).
+Report the percentage of missing values per column.
+Compute, per origin airport, the minimum and average flights per day across the data window, and print the distribution so a sensible cutoff can be chosen.
+Filter to airports meeting a minimum-flights-per-day floor (use the minimum, not the average — the floor should hold on an airport's worst day, not just on average, since downstream lag/rolling features and target encoding need consistent daily volume).
+Map ORIGIN/DEST IATA codes to ICAO codes where not already present (needed for a later Meteostat weather join), flagging any codes that fail to map.
+Save the filtered result to a processed-data location and print a final summary (rows, columns, airports retained).
+
+The script must not modify, impute, recompute, or otherwise alter any existing data values — this is a read/audit/filter/save pipeline only (dropping unneeded columns and rows for unqualifying airports is fine; changing what's inside a retained cell/row is not). Any new columns added (e.g. the ICAO mapping) must be clearly additive, never overwriting a source field.
+
+Use snake_case for all Python variable/function names (source data column names stay as BTS provides them, e.g. FL_DATE). Structure the script with # %% cell markers so it can be run cell-by-cell in VS Code. Paths should come from a project config.py (raw_data_path, processed_data_path), not be hardcoded.
+'''
+# 7.09.2026 20:15 CET
+# Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
+
 """
 process_bts_data.py
 
@@ -20,91 +39,116 @@ Adjust RAW_DATA_DIR / PROCESSED_DATA_DIR to match config.py before running.
 """
 
 # %% Imports and config -------------------------------------------------
+import zipfile
 from pathlib import Path
 
 import pandas as pd
+from config import raw_data_path, processed_data_path
 
-# TODO: point these at the actual paths from your config.py
-RAW_DATA_DIR = Path("data/raw/bts")
-PROCESSED_DATA_DIR = Path("data/processed")
-PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+raw_data_dir = Path(raw_data_path) / "bts"
+processed_data_dir = Path(processed_data_path) / "bts"
+processed_data_dir.mkdir(parents=True, exist_ok=True)
 
 # Minimum flights/day an airport must have, on its WORST day in the window,
-# to be retained. See discussion in thesis methodology re: min vs. average.
-MIN_FLIGHTS_PER_DAY = 10
+# to be retained.
+min_flights_per_day = 10
 
 # Columns needed downstream (raw operational layer). This is intentionally
 # broader than the final modeling feature set -- leakage-relevant trimming
 # (e.g. dropping ARR_DELAY, actual times) happens later at feature
 # engineering, not here.
-KEEP_COLS = [
-    "FL_DATE",
-    "YEAR",
-    "MONTH",
-    "DAY_OF_WEEK",
-    "OP_UNIQUE_CARRIER",
-    "OP_CARRIER_FL_NUM",
-    "ORIGIN",
-    "ORIGIN_CITY_NAME",
-    "ORIGIN_STATE_ABR",
-    "DEST",
-    "DEST_CITY_NAME",
-    "DEST_STATE_ABR",
-    "CRS_DEP_TIME",
-    "DEP_TIME",
-    "DEP_DELAY",
-    "DEP_DEL15",
-    "TAXI_OUT",
-    "WHEELS_OFF",
-    "WHEELS_ON",
-    "TAXI_IN",
-    "CRS_ARR_TIME",
-    "ARR_TIME",
-    "ARR_DELAY",
-    "ARR_DEL15",
-    "CANCELLED",
-    "CANCELLATION_CODE",
-    "DIVERTED",
-    "CRS_ELAPSED_TIME",
-    "ACTUAL_ELAPSED_TIME",
-    "AIR_TIME",
-    "DISTANCE",
-    "CARRIER_DELAY",
-    "WEATHER_DELAY",
-    "NAS_DELAY",
-    "SECURITY_DELAY",
-    "LATE_AIRCRAFT_DELAY",
+keep_cols = [
+    "FlightDate",
+    "Year",
+    "Month",
+    "DayOfWeek",
+    "Reporting_Airline",
+    "Flight_Number_Reporting_Airline",
+    "Origin",
+    "OriginCityName",
+    "OriginState",
+    "Dest",
+    "DestCityName",
+    "DestState",
+    "CRSDepTime",
+    "DepTime",
+    "DepDelay",
+    "DepDel15",
+    "TaxiOut",
+    "WheelsOff",
+    "WheelsOn",
+    "TaxiIn",
+    "CRSArrTime",
+    "ArrTime",
+    "ArrDelay",
+    "ArrDel15",
+    "Cancelled",
+    "CancellationCode",
+    "Diverted",
+    "CRSElapsedTime",
+    "ActualElapsedTime",
+    "AirTime",
+    "Distance",
+    "CarrierDelay",
+    "WeatherDelay",
+    "NASDelay",
+    "SecurityDelay",
+    "LateAircraftDelay",
 ]
 
 
 # %% 1. Load raw files ---------------------------------------------------
-def load_raw_bts(raw_dir: Path) -> pd.DataFrame:
-    """Load and concatenate all monthly BTS CSVs found in raw_dir."""
-    csv_paths = sorted(raw_dir.glob("*.csv"))
-    if not csv_paths:
-        raise FileNotFoundError(f"No CSV files found in {raw_dir}")
+def read_csv_from_zip(zip_path: Path) -> pd.DataFrame:
+    """Read the CSV member out of a single monthly BTS zip archive.
 
-    print(f"Found {len(csv_paths)} monthly files.")
-    frames = [pd.read_csv(p, low_memory=False) for p in csv_paths]
+    BTS zips normally contain exactly one CSV plus a readme; if a zip
+    contains more than one CSV this raises so you can inspect it rather
+    than silently picking the wrong file.
+    """
+    with zipfile.ZipFile(zip_path) as zf:
+        csv_names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
+        if not csv_names:
+            raise ValueError(f"No CSV found inside {zip_path.name}")
+        if len(csv_names) > 1:
+            raise ValueError(
+                f"{zip_path.name} contains multiple CSVs {csv_names} -- "
+                "inspect manually before proceeding."
+            )
+        with zf.open(csv_names[0]) as f:
+            return pd.read_csv(f, low_memory=False)
+
+
+def load_raw_bts(raw_dir: Path) -> pd.DataFrame:
+    """Load and concatenate all monthly BTS zip archives found in raw_dir."""
+    zip_paths = sorted(raw_dir.glob("*.zip"))
+    if not zip_paths:
+        raise FileNotFoundError(f"No .zip files found in {raw_dir}")
+
+    print(f"Found {len(zip_paths)} monthly zip archives.")
+    frames = []
+    for zip_path in zip_paths:
+        df_month = read_csv_from_zip(zip_path)
+        frames.append(df_month)
+        print(f"  {zip_path.name}: {len(df_month):,} rows")
+
     df = pd.concat(frames, ignore_index=True)
     print(f"Loaded {len(df):,} rows total.")
     return df
 
-
-bts_raw = load_raw_bts(RAW_DATA_DIR)
+bts_raw = load_raw_bts(raw_data_dir)
 
 # %% 2. Audit available columns ------------------------------------------
 print(f"\n{len(bts_raw.columns)} columns available:")
 for col in bts_raw.columns:
     print(f"  - {col}")
 
-missing_from_keep = [c for c in KEEP_COLS if c not in bts_raw.columns]
+missing_from_keep = [c for c in keep_cols if c not in bts_raw.columns]
 if missing_from_keep:
     print(f"\nWARNING: expected columns not found in raw data: {missing_from_keep}")
     print("BTS occasionally renames fields between vintages -- check schema.")
 
 # %% 3. Subset to needed columns ------------------------------------------
-present_keep_cols = [c for c in KEEP_COLS if c in bts_raw.columns]
+present_keep_cols = [c for c in keep_cols if c in bts_raw.columns]
 bts = bts_raw[present_keep_cols].copy()
 print(f"\nSubset to {len(bts.columns)} columns, {len(bts):,} rows.")
 
@@ -114,14 +158,14 @@ print("\nMissing value % per column:")
 print(missing_pct.to_string())
 
 # %% 5. Flights/day per airport --------------------------------------------
-bts["fl_date"] = pd.to_datetime(bts["FL_DATE"])
+bts["fl_date"] = pd.to_datetime(bts["FlightDate"], errors="coerce")
 
 flights_per_day = (
-    bts.groupby(["ORIGIN", "fl_date"]).size().rename("n_flights").reset_index()
+    bts.groupby(["Origin", "fl_date"]).size().rename("n_flights").reset_index()
 )
 
 airport_flight_stats = (
-    flights_per_day.groupby("ORIGIN")["n_flights"]
+    flights_per_day.groupby("Origin")["n_flights"]
     .agg(min_flights_per_day="min", avg_flights_per_day="mean", n_days_active="count")
     .sort_values("min_flights_per_day", ascending=False)
 )
@@ -133,18 +177,18 @@ print(airport_flight_stats[["min_flights_per_day", "avg_flights_per_day"]].descr
 
 # %% 6. Filter to airports meeting the minimum-flights-per-day floor -------
 qualifying_airports = airport_flight_stats[
-    airport_flight_stats["min_flights_per_day"] >= MIN_FLIGHTS_PER_DAY
+    airport_flight_stats["min_flights_per_day"] >= min_flights_per_day
 ].index
 
 n_qualifying = len(qualifying_airports)
 print(
     f"\n{n_qualifying} / {n_airports_total} airports have "
-    f">= {MIN_FLIGHTS_PER_DAY} flights on their worst day "
+    f">= {min_flights_per_day} flights on their worst day "
     f"({n_qualifying / n_airports_total:.1%})."
 )
 
 bts_filtered = bts[
-    bts["ORIGIN"].isin(qualifying_airports) & bts["DEST"].isin(qualifying_airports)
+    bts["Origin"].isin(qualifying_airports) & bts["Dest"].isin(qualifying_airports)
 ].copy()
 
 print(
@@ -154,10 +198,9 @@ print(
 
 # %% 7. Map ORIGIN/DEST codes to a universal (ICAO) code -------------------
 # BTS ORIGIN/DEST are already 3-letter IATA codes. Meteostat station lookups
-# key off ICAO codes (4-letter) or lat/lon, so we add an ICAO column now
-# rather than re-deriving it at the weather-join stage.
-#
-# Requires: pip install airportsdata
+# key off ICAO codes (4-letter) or lat/lon, so an ICAO column is added now
+# rather than re-derived at the weather-join stage.
+
 try:
     import airportsdata
 
@@ -180,9 +223,9 @@ try:
         return mapped
 
     if "ORIGIN_ICAO" not in bts_filtered.columns:
-        bts_filtered["ORIGIN_ICAO"] = map_iata_to_icao(bts_filtered, "ORIGIN")
+        bts_filtered["Origin_ICAO"] = map_iata_to_icao(bts_filtered, "Origin")
     if "DEST_ICAO" not in bts_filtered.columns:
-        bts_filtered["DEST_ICAO"] = map_iata_to_icao(bts_filtered, "DEST")
+        bts_filtered["Dest_ICAO"] = map_iata_to_icao(bts_filtered, "Dest")
 
 except ImportError:
     print(
@@ -191,8 +234,10 @@ except ImportError:
     )
 
 # %% 8. Save + summary ------------------------------------------------------
-output_path = PROCESSED_DATA_DIR / "bts_filtered.parquet"
+output_path = processed_data_dir / "bts_processed.parquet"
 bts_filtered.to_parquet(output_path, index=False)
 
 print(f"\nSaved {len(bts_filtered):,} rows, {len(bts_filtered.columns)} columns to {output_path}")
 print(f"Airports retained: {n_qualifying}")
+
+# %%

@@ -31,6 +31,7 @@ Requirements:
   available/failed) and list any failed months so they're easy to spot
   for a rerun
 '''
+# 2.09.2026 23:20 CET
 # Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
 
 """
@@ -46,7 +47,7 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 
-from config import RAW_DATA_PATH
+from config import raw_data_path
 
 base_url = (
     "https://transtats.bts.gov/PREZIP/"
