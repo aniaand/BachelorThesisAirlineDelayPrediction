@@ -233,6 +233,36 @@ except ImportError:
         "Install with: pip install airportsdata"
     )
 
+# %% 7b. Save retained-airport metadata (for Meteostat station matching) --
+# Small reference table, not the main dataset -- CSV is fine here since it's
+# meant to be human-readable/eyeballed and fed into the Meteostat download
+# script as a lookup, not re-loaded at scale.
+iata_records = {rec["iata"]: rec for rec in airportsdata.load("IATA").values() if rec.get("iata")}
+
+airport_metadata = pd.DataFrame([
+    {
+        "iata": iata,
+        "icao": iata_to_icao.get(iata),
+        "name": iata_records.get(iata, {}).get("name"),
+        "city": iata_records.get(iata, {}).get("city"),
+        "lat": iata_records.get(iata, {}).get("lat"),
+        "lon": iata_records.get(iata, {}).get("lon"),
+    }
+    for iata in qualifying_airports
+])
+
+# fill state from BTS itself (more reliable than airportsdata for US state abbreviations)
+state_lookup = bts_filtered.drop_duplicates("Origin").set_index("Origin")["OriginState"]
+airport_metadata["state"] = airport_metadata["iata"].map(state_lookup)
+
+n_missing_coords = airport_metadata["lat"].isna().sum()
+if n_missing_coords:
+    print(f"WARNING: {n_missing_coords} retained airports have no lat/lon match in airportsdata.")
+
+metadata_path = processed_data_dir / "retained_airports.csv"
+airport_metadata.to_csv(metadata_path, index=False)
+print(f"Saved {len(airport_metadata)} airport records to {metadata_path}")
+
 # %% 8. Save + summary ------------------------------------------------------
 output_path = processed_data_dir / "bts_processed.parquet"
 bts_filtered.to_parquet(output_path, index=False)
