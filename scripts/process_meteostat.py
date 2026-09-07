@@ -1,4 +1,6 @@
 '''
+PROMPT:
+
 Write a Python script to process raw Meteostat hourly weather data (previously downloaded and cached by a separate download script) for a flight-delay-prediction pipeline. It should:
 
 Load the combined raw hourly weather file.

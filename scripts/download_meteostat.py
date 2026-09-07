@@ -56,7 +56,8 @@ processed_bts_dir = Path(processed_data_path) / "bts"
 weather_raw_dir = Path(raw_data_path) / "weather"
 weather_raw_dir.mkdir(parents=True, exist_ok=True)
 
-start_date = pd.Timestamp("2024-01-01")
+buffer_days = 3
+start_date = pd.Timestamp("2024-01-01") - pd.Timedelta(days=buffer_days) 
 end_date = pd.Timestamp("2025-12-31")
 
 # Flag (not exclude) stations further than this from their airport, since a
