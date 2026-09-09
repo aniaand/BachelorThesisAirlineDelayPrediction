@@ -3,19 +3,20 @@ Write a Python script to process a raw GDELT event dataset (previously downloade
 
 The raw file is already a curated column set (not the full GDELT schema), so the main job here is less about trimming columns and more about validating that the upstream query actually did what it was supposed to. The script should:
 
-Load the raw GDELT events file.
-Print every column available, so the schema can be audited against expectations.
-Subset to the columns needed downstream, dropping fields that were only pulled for manual QA of the geocoding (raw lat/lon, full place name) now that a computed distance-to-airport field already exists.
-Report missing value percentage per column.
-Run query-correctness sanity checks rather than assuming the upstream filtering worked:
-Confirm only the intended CAMEO root codes are present in the data (flag anything unexpected), and print the root code distribution.
-Confirm no row exceeds the intended search radius (validates the geo join actually constrained results).
-Confirm the event date range falls within the intended buffer + study window (catches boundary/partition-filter mismatches).
-Check for duplicate (event ID, airport) pairs, which would indicate a join bug — as distinct from the same event legitimately matching multiple nearby airports, which is expected and should be reported separately, not flagged as an error.
-Report the distribution of event counts per airport, and flag airports with very few matched events over the whole window, since that's relevant to interpreting weak or missing signal for that airport later.
-Save the subset, audited result to a processed-data location.
+1. Load the raw GDELT events file.
+2. Print every column available, so the schema can be audited against expectations.
+3. Subset to the columns needed downstream, dropping fields that were only pulled for manual QA of the geocoding (raw lat/lon, full place name) now that a computed distance-to-airport field already exists.
+4. Report missing value percentage per column.
+5. Run query-correctness sanity checks rather than assuming the upstream filtering worked:
+   - Confirm only the intended CAMEO root codes are present in the data (flag anything unexpected), and print the root code distribution.
+   - Confirm no row exceeds the intended search radius (validates the geo join actually constrained results).
+   - Confirm the event date range falls within the intended buffer + study window (catches boundary/partition-filter mismatches).
+   - Check for duplicate (event ID, airport) pairs, which would indicate a join bug — as distinct from the same event legitimately matching multiple nearby airports, which is expected and should be reported separately, not flagged as an error.
+   - Report the distribution of event counts per airport, and flag airports with very few matched events over the whole window, since that's relevant to interpreting weak or missing signal for that airport later.
+6. Save the subset, audited event-level result to a processed-data location.
+7. Aggregate the audited event-level data to one row per (airport, date), with a count column per intended CAMEO root code plus a total count across all codes.
 
-The script must not aggregate events into daily or per-airport features, impute anything, or otherwise transform values — this is a load/audit/subset/save pipeline only, matching the same shape as the earlier BTS and Meteostat processing scripts. Use snake_case naming, # %% cell markers for VS Code, and pull paths and the query parameters being validated against (expected root codes, radius, date window) from constants at the top of the script rather than hardcoding them inline.
+The event-level load/audit/subset/save portion must not impute anything or otherwise transform values — matching the same shape as the earlier BTS and Meteostat processing scripts — right up until the final aggregation step, which is the one deliberate exception. Use snake_case naming, # %% cell markers for VS Code, and pull paths and the query parameters being validated against (expected root codes, radius, date window) from constants at the top of the script rather than hardcoding them inline.
 '''
 # 7.09.2026 22:40 CET
 # Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
@@ -24,14 +25,8 @@ The script must not aggregate events into daily or per-airport features, impute 
 process_gdelt.py
 
 Stage 1 cleaning/audit pass over raw GDELT event data (downloaded by
-download_gdelt.py).
-
-Unlike the BTS/Meteostat raw files, download_gdelt.py already SELECTed a
-curated column set at query time -- so there's less to trim here. This
-script's main job is validating that the geo/code/date filtering in the
-download query actually did what it was supposed to, plus the standard
-missingness audit.
-
+download_gdelt.py), followed by aggregation to a daily airport-level count
+table.
 Pipeline:
     1. Load the raw GDELT events file
     2. Audit available columns
@@ -43,12 +38,10 @@ Pipeline:
          - date range matches the intended buffer + study window
          - no duplicate (event, airport) pairs
          - per-airport event count distribution (flag airports with ~0 events)
-    6. Save the cleaned/subset result
-
-This script only loads, audits, subsets, and saves -- it does not
-aggregate to daily/per-airport features (that's a separate downstream
-script), impute, or otherwise transform values.
-
+    6. Save the cleaned/subset event-level result
+    7. Aggregate to (airport, date) counts per CAMEO root code + total, and
+       save that separately -- a grain change, not feature engineering, so
+       it belongs here rather than in feature_engineering.py
 Run cell-by-cell in VS Code (Code Runner respects the "# %%" markers) or as
 a plain script: `python process_gdelt.py`.
 """
@@ -65,14 +58,12 @@ gdelt_processed_dir = Path(processed_data_path) / "gdelt"
 gdelt_processed_dir.mkdir(parents=True, exist_ok=True)
 
 # Values the download query was built with -- used here to check the query
-# actually did what it was supposed to, not to re-apply filtering.
 expected_root_codes = {"14", "17", "18", "20"}
 expected_radius_meters = 50_000
 expected_start_date = pd.Timestamp("2024-01-01") - pd.Timedelta(days=7)
 expected_end_date = pd.Timestamp("2025-12-31")
 
-# ActionGeo_Lat/Long/FullName were fetched for QA (verifying the geo join)
-# but aren't needed downstream once distance_meters + airport_iata exist.
+
 keep_cols = [
     "GLOBALEVENTID",
     "SQLDATE",
@@ -87,6 +78,14 @@ keep_cols = [
     "ActionGeo_Type",
     "distance_meters",
 ]
+
+# CAMEO root code label used for the aggregated count columns
+root_code_labels = {
+    "14": "protest",
+    "17": "coerce",
+    "18": "assault",
+    "20": "mass_violence",
+}
 
 
 # %% 1. Load raw GDELT events ------------------------------------------------
@@ -166,7 +165,34 @@ if len(low_coverage_airports):
     print(f"\n{len(low_coverage_airports)} airports with < 10 matched events over the whole window:")
     print(low_coverage_airports.to_string())
 
-# %% 6. Save -----------------------------------------------------------------------
+# %% 6. Save event-level result -----------------------------------------------------
 output_path = gdelt_processed_dir / "gdelt_processed.parquet"
 gdelt.to_parquet(output_path, index=False)
 print(f"\nSaved {len(gdelt):,} rows, {len(gdelt.columns)} columns to {output_path}")
+
+# %% 7. Aggregate to daily (airport, date) counts per root code + total
+
+gdelt["root_label"] = gdelt["EventRootCode"].astype(str).map(root_code_labels)
+
+gdelt_daily = (
+    gdelt.groupby(["airport_iata", "event_date", "root_label"])
+    .size()
+    .unstack("root_label", fill_value=0)
+    .reset_index()
+)
+gdelt_daily.columns.name = None
+
+for label in root_code_labels.values():
+    if label not in gdelt_daily.columns:
+        gdelt_daily[label] = 0
+    gdelt_daily = gdelt_daily.rename(columns={label: f"gdelt_{label}_count"})
+
+count_cols = [f"gdelt_{label}_count" for label in root_code_labels.values()]
+gdelt_daily["gdelt_total_count"] = gdelt_daily[count_cols].sum(axis=1)
+
+daily_output_path = gdelt_processed_dir / "gdelt_daily_counts.parquet"
+gdelt_daily.to_parquet(daily_output_path, index=False)
+print(
+    f"\nSaved daily counts: {gdelt_daily.shape[0]:,} (airport, date) rows, "
+    f"{gdelt_daily.shape[1]} columns to {daily_output_path}"
+)

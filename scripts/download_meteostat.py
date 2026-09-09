@@ -5,12 +5,12 @@ Write a Python script to download hourly Meteostat weather data for a fixed set 
 
 Requirements:
 
-Load the airport list from a retained_airports.csv file (produced by an earlier BTS processing step) containing IATA code, ICAO code, name, city, state, lat, lon.
-Use hourly resolution, not daily — the target variable is a per-flight departure-delay flag, and delay-relevant weather (a storm burst, a wind gust window) can occur within an hour and would be washed out by a daily average. Each flight will later be matched to its nearest hourly observation via scheduled departure time.
-For each airport, find the nearest Meteostat station using its lat/lon, and fetch hourly data for that station across the full 2024-01-01 to 2025-12-31 window.
-Make the download resumable: cache each airport's data as its own file, skip airports already cached on re-run, and retry failed fetches a few times before giving up on that airport (matching the resume/skip/retry pattern already used in the BTS download pipeline).
-After downloading, concatenate all cached airport files into one combined raw weather file and save it.
-Report data-quality issues rather than silently proceeding: airports with no nearby station, airports where the fetch failed or returned no data, and airports whose nearest station is unusually far away (flag, don't auto-exclude, since that's a judgment call for the methodology write-up).
+1. Load the airport list from a retained_airports.csv file (produced by an earlier BTS processing step) containing IATA code, ICAO code, name, city, state, lat, lon.
+2. Use hourly resolution, not daily
+3. For each airport, find the nearest Meteostat station using its lat/lon, and fetch hourly data for that station across the full 2024-01-01 to 2025-12-31 window + buffer.
+4. Make the download resumable: cache each airport's data as its own file, skip airports already cached on re-run, and retry failed fetches a few times before giving up on that airport (matching the resume/skip/retry pattern already used in the BTS download pipeline).
+5. After downloading, concatenate all cached airport files into one combined raw weather file and save it.
+6. Report data-quality issues rather than silently proceeding: airports with no nearby station, airports where the fetch failed or returned no data, and airports whose nearest station is unusually far away (flag, don't auto-exclude, since that's a judgment call for the methodology write-up).
 
 This script only downloads and caches raw weather data — it should not clean, aggregate, impute, or otherwise transform the fetched values; that's a separate downstream step. Use snake_case naming, # %% cell markers for VS Code, and pull paths from the project's config.py rather than hardcoding them.
 '''
@@ -26,7 +26,7 @@ process_bts.py, over the full study window (2024-2025).
 Hourly, not daily: flight delay is driven by conditions at the specific
 departure hour (a short storm burst, a wind gust window), which a daily
 average would smear out. Each flight will later be matched to its nearest
-hourly observation via CRSDepTime.
+hourly observation via DepTime.
 
 Resumable: each airport's data is cached as its own parquet file, so a
 re-run skips airports already downloaded and only retries failures/gaps.

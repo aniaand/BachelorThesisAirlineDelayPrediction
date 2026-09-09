@@ -3,12 +3,12 @@ PROMPT:
 
 Write a Python script to process raw Meteostat hourly weather data (previously downloaded and cached by a separate download script) for a flight-delay-prediction pipeline. It should:
 
-Load the combined raw hourly weather file.
-Print every column available in the raw data, so the schema can be audited against expectations.
-Subset the data to only the core weather variables needed (temperature, precipitation, wind speed, cloud cover) plus join/reference keys (timestamp, airport code, station id, station distance from airport).
-Report the percentage of missing values per column, across all stations combined.
-Separately, report missingness per station for the core weather variables — since overall column-level missingness can hide the fact that a subset of stations barely report a given variable (e.g. cloud cover) while others report it fine. Flag (don't auto-drop) any station whose missingness on any core variable exceeds a threshold, so exclusion/imputation decisions can be made deliberately later rather than baked in here.
-Save the subset, audited result to a processed-data location.
+1. Load the combined raw hourly weather file.
+2. Print every column available in the raw data, so the schema can be audited against expectations.
+3. Subset the data to only the core weather variables needed (temperature, precipitation, wind speed, cloud cover) plus join/reference keys (timestamp, airport code, station id, station distance from airport).
+4. Report the percentage of missing values per column, across all stations combined.
+5. Separately, report missingness per station for the core weather variables — since overall column-level missingness can hide the fact that a subset of stations barely report a given variable (e.g. cloud cover) while others report it fine. Flag (don't auto-drop) any station whose missingness on any core variable exceeds a threshold, so exclusion/imputation decisions can be made deliberately later rather than baked in here.
+6. Save the subset, audited result to a processed-data location.
 
 The script must not impute, aggregate, resample, or otherwise transform any weather values — this is a load/audit/subset/save pipeline only, mirroring the equivalent BTS processing script. Use snake_case naming, # %% cell markers for VS Code, and pull paths from the project's config.py rather than hardcoding them.
 '''

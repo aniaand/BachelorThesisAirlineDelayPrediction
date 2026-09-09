@@ -50,18 +50,14 @@ gdelt_raw_dir.mkdir(parents=True, exist_ok=True)
 
 study_start = pd.Timestamp("2024-01-01")
 study_end = pd.Timestamp("2025-12-31")
-buffer_days = 7  # matches the max 7-day rolling/lag window used in feature engineering
+buffer_days = 7
 query_start = study_start - pd.Timedelta(days=buffer_days)
 
-radius_meters = 50_000  # 50 km; matches the distance-flag threshold used for weather
+radius_meters = 50_000  # 50 km
 require_precise_geocode = True  # restrict to ActionGeo_Type 3 (city) / 4 (landmark)
 
 # CAMEO root codes representing physical/operational disruption, as opposed
-# to diplomatic statements/appeals/cooperation (01-13). FIGHT (19, open armed
-# conflict) was dropped given the domestic-US scope -- it's essentially a
-# null category on US soil. ASSAULT (18) is kept instead: its sub-codes
-# include hijack/kidnap/take hostage and assassinate/attempt to assassinate,
-# both far more plausible near US airports than open combat.
+# to diplomatic statements/appeals/cooperation (01-13).
 #   14 PROTEST, 17 COERCE, 18 ASSAULT, 20 USE UNCONVENTIONAL MASS VIOLENCE
 root_codes = ["14", "17", "18", "20"]
 
@@ -75,8 +71,7 @@ print(f"{len(airports)} airports to match against GDELT events.")
 
 client = bigquery.Client(project=gcp_project_id)
 
-# %% 2. Stage airport list as a temp table (own project, not gdelt-bq) -------
-# Cleaner and more robust than inlining 114 airports as a literal array.
+# %% 2. Stage airport list as a temp table (own project, not gdelt-bq)
 airport_table_id = f"{gcp_project_id}.{bq_dataset_id}.retained_airports_tmp"
 job_config = bigquery.LoadJobConfig(
     schema=[
