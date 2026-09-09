@@ -34,13 +34,6 @@ Requirements:
 # 2.09.2026 23:20 CET
 # Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
 
-"""
-Downloads BTS On-Time Performance monthly zip files for 2024-2025.
-Resumes automatically: skips any month whose zip already exists locally.
-Keeps the session alive with a long per-request timeout and retries,
-since these files are large and BTS can be slow.
-"""
-
 import time
 from pathlib import Path
 
@@ -49,6 +42,7 @@ from tqdm import tqdm
 
 from config import raw_data_path
 
+#Define base variables for download
 base_url = (
     "https://transtats.bts.gov/PREZIP/"
     "On_Time_Reporting_Carrier_On_Time_Performance_1987_present_{year}_{month}.zip"
@@ -61,27 +55,26 @@ max_retries = 3
 retry_wait_seconds = 10
 chunk_size = 1024 * 1024  # 1 MB
 
-
+#Iterate through years and months with filename formatting
 def month_filename(year: int, month: int) -> str:
     return f"On_Time_Performance_{year}_{month}.zip"
 
-
+#Download a single month's zip with a per-file progress bar
 def download_one_month(session: requests.Session, year: int, month: int, dest_dir: Path) -> str:
-    """
-    Downloads a single month's zip with a per-file progress bar.
-    Returns 'downloaded', 'skipped', 'not_available', or 'failed'.
-    """
     url = base_url.format(year=year, month=month)
     dest_path = dest_dir / month_filename(year, month)
 
+    #Skip if the file already exists and is non-zero size
     if dest_path.exists() and dest_path.stat().st_size > 0:
         return "skipped"
 
+    #Retry logic for transient failures, with a temporary .part file during download
+    #Download with streaming and a per-file progress bar
     for attempt in range(1, max_retries + 1):
         try:
             with session.get(url, stream=True, timeout=(10, 300)) as response:
                 if response.status_code == 404:
-                    # Month not yet published (expected for recent 2025 months)
+                    # Month not yet published
                     return "not_available"
                 response.raise_for_status()
 
@@ -113,14 +106,16 @@ def download_one_month(session: requests.Session, year: int, month: int, dest_di
 
 
 def main():
+    #Create destination directory if it doesn't exist
     dest_dir = Path(raw_data_path) / "bts"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    #Generate a list of all year-month combinations to download
     all_months = [(y, m) for y in years for m in months]
 
     results = {"downloaded": 0, "skipped": 0, "not_available": 0, "failed": 0}
     failed_months = []
-
+    
     with requests.Session() as session:
         # Keep-alive headers help avoid the connection being dropped mid-download
         session.headers.update({"Connection": "keep-alive"})

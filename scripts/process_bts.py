@@ -1,13 +1,13 @@
 '''
 Write a Python script (not a notebook) to process raw BTS On-Time Performance data for a flight delay prediction pipeline. It should:
 
-Load monthly BTS files directly from their .zip archives (no separate unzip step) and merge all months into one DataFrame.
-Print every column available in the raw data, so the schema can be audited against expectations.
-Subset the data to only the columns needed downstream (operational fields relevant to delay prediction — carrier, origin/dest, scheduled and actual times, delay causes, cancellation/diversion flags — but not yet trimmed for modeling-stage leakage, since that happens later at feature engineering).
-Report the percentage of missing values per column.
-Compute, per origin airport, the minimum and average flights per day across the data window, and print the distribution so a sensible cutoff can be chosen.
-Filter to airports meeting a minimum-flights-per-day floor (use the minimum, not the average — the floor should hold on an airport's worst day, not just on average, since downstream lag/rolling features and target encoding need consistent daily volume).
-Map ORIGIN/DEST IATA codes to ICAO codes where not already present (needed for a later Meteostat weather join), flagging any codes that fail to map.
+1. Load monthly BTS files directly from their .zip archives (no separate unzip step) and merge all months into one DataFrame.
+2. Print every column available in the raw data, so the schema can be audited against expectations.
+3. Subset the data to only the columns needed downstream (operational fields relevant to delay prediction — carrier, origin/dest, scheduled and actual times, delay causes, cancellation/diversion flags — but not yet trimmed for modeling-stage leakage, since that happens later at feature engineering).
+4. Report the percentage of missing values per column.
+5. Compute, per origin airport, the minimum and average flights per day across the data window, and print the distribution so a sensible cutoff can be chosen.
+6. Filter to airports meeting a minimum-flights-per-day floor (use the minimum, not the average — the floor should hold on an airport's worst day, not just on average, since downstream lag/rolling features and target encoding need consistent daily volume).
+7. Map ORIGIN/DEST IATA codes to ICAO codes where not already present (needed for a later Meteostat weather join), flagging any codes that fail to map.
 Save the filtered result to a processed-data location and print a final summary (rows, columns, airports retained).
 
 The script must not modify, impute, recompute, or otherwise alter any existing data values — this is a read/audit/filter/save pipeline only (dropping unneeded columns and rows for unqualifying airports is fine; changing what's inside a retained cell/row is not). Any new columns added (e.g. the ICAO mapping) must be clearly additive, never overwriting a source field.
@@ -18,25 +18,19 @@ Use snake_case for all Python variable/function names (source data column names 
 # Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
 
 """
-process_bts_data.py
-
-Stage 1 cleaning/audit pass over raw BTS On-Time Performance data.
 
 Pipeline:
     1. Load raw monthly BTS files
     2. Audit available columns
-    3. Subset to the columns needed for the thesis
-    4. Audit missingness per column
+    3. Subset to the columns needed for the analysis
+    4. Investigate missingness per column
     5. Compute flights/day per airport (min + average) and print the distribution
     6. Filter to airports meeting a minimum-flights-per-day floor
     7. Map ORIGIN/DEST IATA codes to ICAO codes (needed later for Meteostat joins),
        skipping any that are already present
-
-Run cell-by-cell in VS Code (Code Runner respects the "# %%" markers) or as a
-plain script: `python process_bts_data.py`.
-
-Adjust RAW_DATA_DIR / PROCESSED_DATA_DIR to match config.py before running.
+    8. Save the filtered result to a processed-data location and print a final summary
 """
+
 
 # %% Imports and config -------------------------------------------------
 import zipfile
@@ -53,10 +47,7 @@ processed_data_dir.mkdir(parents=True, exist_ok=True)
 # to be retained.
 min_flights_per_day = 10
 
-# Columns needed downstream (raw operational layer). This is intentionally
-# broader than the final modeling feature set -- leakage-relevant trimming
-# (e.g. dropping ARR_DELAY, actual times) happens later at feature
-# engineering, not here.
+# Columns needed downstream, intentionally broader than the final modeling feature set
 keep_cols = [
     "FlightDate",
     "Year",
@@ -99,12 +90,8 @@ keep_cols = [
 
 # %% 1. Load raw files ---------------------------------------------------
 def read_csv_from_zip(zip_path: Path) -> pd.DataFrame:
-    """Read the CSV member out of a single monthly BTS zip archive.
+    """Read the first CSV found inside a .zip archive into a DataFrame."""
 
-    BTS zips normally contain exactly one CSV plus a readme; if a zip
-    contains more than one CSV this raises so you can inspect it rather
-    than silently picking the wrong file.
-    """
     with zipfile.ZipFile(zip_path) as zf:
         csv_names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
         if not csv_names:
@@ -196,10 +183,7 @@ print(
     f"({len(bts_filtered) / len(bts):.1%} of subset)."
 )
 
-# %% 7. Map ORIGIN/DEST codes to a universal (ICAO) code -------------------
-# BTS ORIGIN/DEST are already 3-letter IATA codes. Meteostat station lookups
-# key off ICAO codes (4-letter) or lat/lon, so an ICAO column is added now
-# rather than re-derived at the weather-join stage.
+# %% 7. Map Origin/Dest IATA codes to ICAO codes (for Meteostat)
 
 try:
     import airportsdata
@@ -234,9 +218,7 @@ except ImportError:
     )
 
 # %% 7b. Save retained-airport metadata (for Meteostat station matching) --
-# Small reference table, not the main dataset -- CSV is fine here since it's
-# meant to be human-readable/eyeballed and fed into the Meteostat download
-# script as a lookup, not re-loaded at scale.
+# Small reference table, not the main dataset
 iata_records = {rec["iata"]: rec for rec in airportsdata.load("IATA").values() if rec.get("iata")}
 
 airport_metadata = pd.DataFrame([

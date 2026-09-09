@@ -3,14 +3,14 @@ Write a Python script to download GDELT 2.0 event data via BigQuery for a fixed 
 
 Requirements:
 
-Load the airport list from a retained_airports.csv file (IATA code, lat, lon) produced by an earlier BTS processing step.
-Query GDELT's public BigQuery event table (gdelt-bq.gdeltv2.events_partitioned), filtered by _PARTITIONTIME for cost efficiency, over the study window (2024-01-01 to 2025-12-31) plus a short buffer before the start date (matching the pipeline's max lag/rolling window, currently 7 days) so early-window features have complete history to compute from.
-Match events to airports by location: within a fixed radius (50 km) of each airport's coordinates, using BigQuery geography functions (ST_DWITHIN/ST_GEOGPOINT), and additionally restrict to city/landmark-level geocoded events (ActionGeo_Type 3 or 4) rather than country/state-level centroids, since a coarse geocode landing within the radius by coincidence isn't a genuine local match. Note in code comments that this radius approach still misses genuinely relevant events that GDELT only geocoded at state/country level — that's a real, acknowledged limitation, not something the script tries to fully solve.
-Filter to a small set of CAMEO root codes representing physical/operational disruption relevant to a domestic US aviation context — not diplomatic/statement-type codes. Make the code list an easily editable constant with a comment explaining the rationale for each choice.
-Stage the airport list as a temporary table in the user's own GCP project/dataset (since the public GDELT project is read-only) to join against, rather than inlining the airport list as a literal SQL array. Delete the temp table at the end of the script regardless of success.
-Before running the real query, run a dry-run cost estimate and hard-abort with a clear error if the estimated bytes scanned exceed a configurable safety cap — don't silently run an expensive query.
-After the query completes, report: total events matched, distinct events (a single event can match multiple nearby airports), how many of the airports got zero matches, and use the BigQuery Storage API with a visible progress bar for the results download (the default REST download path is slow for larger result sets).
-Save the raw, unaggregated event-level result (one row per airport-event match) to a raw-data location. This script only queries, filters by radius/code/date, and saves — it does not aggregate to daily/per-airport features, impute, or otherwise transform values; that's a separate downstream script.
+1. Load the airport list from a retained_airports.csv file (IATA code, lat, lon) produced by an earlier BTS processing step.
+2. Query GDELT's public BigQuery event table (gdelt-bq.gdeltv2.events_partitioned), filtered by _PARTITIONTIME for cost efficiency, over the study window (2024-01-01 to 2025-12-31) plus a short buffer before the start date (matching the pipeline's max lag/rolling window, currently 7 days) so early-window features have complete history to compute from.
+3. Match events to airports by location: within a fixed radius (50 km) of each airport's coordinates, using BigQuery geography functions (ST_DWITHIN/ST_GEOGPOINT), and additionally restrict to city/landmark-level geocoded events (ActionGeo_Type 3 or 4)
+4. Filter to a small set of CAMEO root codes representing physical/operational disruption relevant to a domestic US aviation context — not diplomatic/statement-type codes. Make the code list an easily editable constant with a comment explaining the rationale for each choice.
+5. Stage the airport list as a temporary table in the user's own GCP project/dataset (since the public GDELT project is read-only) to join against, rather than inlining the airport list as a literal SQL array. Delete the temp table at the end of the script regardless of success.
+6. Before running the real query, run a dry-run cost estimate and hard-abort with a clear error if the estimated bytes scanned exceed a configurable safety cap — don't silently run an expensive query.
+7. After the query completes, report: total events matched, distinct events (a single event can match multiple nearby airports), how many of the airports got zero matches, and use the BigQuery Storage API with a visible progress bar for the results download (the default REST download path is slow for larger result sets).
+8. Save the raw, unaggregated event-level result (one row per airport-event match) to a raw-data location. This script only queries, filters by radius/code/date, and saves — it does not aggregate to daily/per-airport features, impute, or otherwise transform values; that's a separate downstream script.
 
 Use snake_case naming, # %% cell markers for VS Code, and pull GCP project ID, BigQuery dataset ID, and data paths from the project's config.py rather than hardcoding them.
 '''
@@ -18,8 +18,6 @@ Use snake_case naming, # %% cell markers for VS Code, and pull GCP project ID, B
 # Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
 
 """
-download_gdelt.py
-
 Downloads GDELT 2.0 event data via BigQuery for the airports retained by
 process_bts.py, filtered to:
   - events within a fixed radius of each airport (ActionGeo location)
