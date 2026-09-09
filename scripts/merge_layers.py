@@ -12,8 +12,9 @@ feature_engineering.py that runs afterward. It should:
 2. Build Layer A from BTS: drop cancelled and diverted flights, subset to only
    columns knowable before departure (drop everything post-outcome -- arrival
    actuals, taxi/wheels times, delay-cause breakdown), rename all columns to
-   snake_case, and cast the target (departure delay >= 15 min) to a compact int
-   dtype. Report how many rows were dropped and why at each step.
+   snake_case, assign a stable flight_id, and cast the target (departure delay
+   >= 15 min) to a compact int dtype. Report how many rows were dropped and why
+   at each step.
 3. Build a join key by flooring each flight's scheduled departure time to the hour.
 4. Aggregate the hourly Meteostat data into a trailing lookback window immediately
    before that scheduled hour (a configurable number of hours, defaulting to 12,
@@ -96,7 +97,12 @@ def build_layer_a(bts: pd.DataFrame) -> pd.DataFrame:
         df = df.dropna(subset=["dep_del15"])
     df["dep_del15"] = df["dep_del15"].astype("int8")
 
-    return df.reset_index(drop=True)
+    df = df.reset_index(drop=True)
+    # Stable ID assigned once, before any merges, so it carries unchanged through
+    # Layer B/C/D and lets subsample.py select the same flights across all 4 layers
+    # by ID rather than relying on row order/position staying aligned.
+    df.insert(0, "flight_id", df.index.astype("int64"))
+    return df
 
 
 layer_a = build_layer_a(bts)

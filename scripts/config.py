@@ -3,7 +3,7 @@ import os
 # Raw data: purely local, no cloud sync
 raw_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/raw"
 processed_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/processed"
-full_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/full"
+final_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/final"
 
 # Processed data: small enough to sync via Drive for backup
 data_root = "/Users/aniaandruszkiewicz/FS/Thesis_Data"
