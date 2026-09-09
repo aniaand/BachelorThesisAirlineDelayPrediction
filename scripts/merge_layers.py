@@ -48,9 +48,8 @@ from config import processed_data_path
 processed_data_path = Path(processed_data_path)
 
 # How many hours of weather history (strictly before scheduled departure) to
-# aggregate per flight. Empirical/causal choice: uses only weather that had
-# already occurred by prediction time, not the departure-hour reading itself.
-LOOKBACK_HOURS = 12
+# aggregate per flight. 
+lookback_hours = 12
 
 # %% Load processed layer inputs
 bts = pd.read_parquet(processed_data_path / "bts" / "bts_processed.parquet")
@@ -62,10 +61,8 @@ print(f"Weather raw: {weather.shape}")
 # %% Layer A base — pre-departure-known BTS columns only, target = dep_del15
 # Excluded: everything only known after departure/arrival (ArrTime, ArrDelay, ArrDel15,
 # TaxiOut/In, WheelsOff/On, ActualElapsedTime, AirTime, delay-cause breakdown, DepTime,
-# DepDelay). DepDelay is the raw value DepDel15 is thresholded from — it's dropped as a
-# feature but could be kept separately for post-hoc analysis if you want it; not included
-# here to keep Layer A strictly leakage-free.
-KEEP_COLS = {
+# DepDelay).
+keep_cols = {
     "FlightDate": "flight_date",
     "Year": "year",
     "Month": "month",
@@ -91,7 +88,7 @@ def build_layer_a(bts: pd.DataFrame) -> pd.DataFrame:
     dropped = before - len(df)
     print(f"Dropped {dropped} cancelled/diverted flights ({dropped / before:.2%})")
 
-    df = df[list(KEEP_COLS.keys())].rename(columns=KEEP_COLS)
+    df = df[list(keep_cols.keys())].rename(columns=keep_cols)
 
     n_missing_target = df["dep_del15"].isna().sum()
     if n_missing_target:
@@ -144,18 +141,18 @@ def build_weather_lookback(weather: pd.DataFrame, lookback_hours: int) -> pd.Dat
     return lookback.reset_index().rename(columns={"time": "dep_datetime_hour", "iata": "origin"})
 
 
-weather_lookback = build_weather_lookback(weather, LOOKBACK_HOURS)
+weather_lookback = build_weather_lookback(weather, lookback_hours)
 
 
 def build_layer_b(layer_a: pd.DataFrame, weather_lookback: pd.DataFrame) -> pd.DataFrame:
     df = layer_a.merge(weather_lookback, on=["origin", "dep_datetime_hour"], how="left")
-    matched = df[f"temp_mean_{LOOKBACK_HOURS}h"].notna().mean()
-    print(f"Weather match rate ({LOOKBACK_HOURS}h lookback): {matched:.2%}")
+    matched = df[f"temp_mean_{lookback_hours}h"].notna().mean()
+    print(f"Weather match rate ({lookback_hours}h lookback): {matched:.2%}")
     return df
 
 
 layer_b = build_layer_b(layer_a, weather_lookback)
-print(f"Layer B (BTS + Meteostat, {LOOKBACK_HOURS}h lookback): {layer_b.shape}")
+print(f"Layer B (BTS + Meteostat, {lookback_hours}h lookback): {layer_b.shape}")
 
 # %% GDELT daily counts — already aggregated to (airport, date) by process_gdelt.py
 gdelt_daily = pd.read_parquet(processed_data_path / "gdelt" / "gdelt_daily_counts.parquet")
@@ -190,11 +187,11 @@ print(f"GDELT daily counts, complete grid: {gdelt_daily.shape}")
 # Integer-window rolling (fast, vectorized) rather than a time-offset window ("7D"),
 # which is a known slow path in pandas — the complete daily grid above makes an
 # integer window equivalent to a calendar window. shift(1) excludes the current day.
-LAG_WINDOWS_DAYS = [1, 3, 7]
+lag_windows_days = [1, 3, 7]
 
 grouped = gdelt_daily.groupby("origin")[gdelt_count_cols]
 lag_frames = []
-for window_days in LAG_WINDOWS_DAYS:
+for window_days in lag_windows_days:
     rolled = grouped.rolling(window=window_days, min_periods=1).sum().reset_index(level=0, drop=True)
     lagged = rolled.groupby(gdelt_daily["origin"]).shift(1)
     lagged = lagged.add_suffix(f"_lag{window_days}d")
@@ -203,7 +200,7 @@ for window_days in LAG_WINDOWS_DAYS:
 gdelt_daily = pd.concat([gdelt_daily] + lag_frames, axis=1)
 lag_cols = [c for c in gdelt_daily.columns if "_lag" in c]
 gdelt_daily[lag_cols] = gdelt_daily[lag_cols].fillna(0).astype("int32")
-print(f"GDELT daily counts + {LAG_WINDOWS_DAYS}-day lags: {gdelt_daily.shape}")
+print(f"GDELT daily counts + {lag_windows_days}-day lags: {gdelt_daily.shape}")
 
 # %% Layer C / D — join daily GDELT counts onto Layer A / Layer B (same-day, origin airport)
 def add_gdelt(df: pd.DataFrame, gdelt_daily: pd.DataFrame) -> pd.DataFrame:
