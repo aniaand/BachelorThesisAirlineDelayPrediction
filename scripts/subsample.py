@@ -39,6 +39,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from config import processed_data_path
+from appendix_utils import save_appendix_table
 
 processed_data_path = Path(processed_data_path)
 merged_dir = processed_data_path / "merged"
@@ -46,7 +47,7 @@ merged_dir = processed_data_path / "merged"
 target_sample_size = 1_000_000
 random_state= 42
 
-LAYER_FILES = [
+layer_files = [
     "layer_a_bts",
     "layer_b_bts_meteostat",
     "layer_c_bts_gdelt",
@@ -83,13 +84,44 @@ else:
 
 selected_flight_ids = set(sampled_2024["flight_id"])
 
+# %% 2b. Appendix B.3 (part) -- subsample summary --------------------------------
+# Largest absolute gap between a stratum's share in the full 2024 data and in the
+# sample, in percentage points: shows the stratification held.
+full_share = group_sizes / len(train_2024)
+sample_share = sampled_group_sizes.reindex(full_share.index, fill_value=0) / len(sampled_2024)
+max_share_gap_pp = (sample_share - full_share).abs().max() * 100
+
+b3_subsample = pd.DataFrame(
+    [
+        ("Training rows, full 2024", f"{len(train_2024):,}"),
+        ("Sampled rows", f"{len(sampled_2024):,}"),
+        ("Sampling fraction", f"{len(sampled_2024) / len(train_2024):.2%}"),
+        ("Method", "stratified, sklearn train_test_split"),
+        ("Stratification key", "origin x dep_del15"),
+        ("Strata", f"{len(group_sizes):,}"),
+        ("Strata with zero sampled rows", f"{len(zero_groups):,}"),
+        ("Max. stratum share gap (pp)", f"{max_share_gap_pp:.4f}"),
+        ("Delay rate, full 2024", f"{train_2024['dep_del15'].mean():.2%}"),
+        ("Delay rate, sample", f"{sampled_2024['dep_del15'].mean():.2%}"),
+        ("Random seed", str(random_state)),
+        ("2025 holdout", "not subsampled"),
+    ],
+    columns=["item", "value"],
+)
+save_appendix_table(
+    b3_subsample,
+    "b3_subsample_summary",
+    "Construction of the 2024 training subsample used for TabPFN-3 and the "
+    "same-sample classical ML comparison.",
+)
+
 # %% 3. Save the selected flight_id set for reproducibility/auditing ------------------
 ids_path = merged_dir / "subsample_2024_flight_ids.parquet"
 sampled_2024[["flight_id"]].to_parquet(ids_path, index=False)
 print(f"Saved selected flight_ids: {len(selected_flight_ids):,} -> {ids_path}")
 
 # %% 4. Apply the same flight_id set to all four layers, 2025 left untouched ----------
-for name in LAYER_FILES:
+for name in layer_files:
     path = merged_dir / f"{name}.parquet"
     df = pd.read_parquet(path)
 

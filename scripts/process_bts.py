@@ -38,6 +38,7 @@ from pathlib import Path
 
 import pandas as pd
 from config import raw_data_path, processed_data_path
+from appendix_utils import save_appendix_table
 
 raw_data_dir = Path(raw_data_path) / "bts"
 processed_data_dir = Path(processed_data_path) / "bts"
@@ -244,6 +245,38 @@ if n_missing_coords:
 metadata_path = processed_data_dir / "retained_airports.csv"
 airport_metadata.to_csv(metadata_path, index=False)
 print(f"Saved {len(airport_metadata)} airport records to {metadata_path}")
+
+# %% 7c. Appendix A.1 -- retained airports ----------------------------------
+# Min/avg flights per day come from the pre-filter origin counts (the basis of
+# the filter decision). Departures count rows kept after the airport filter.
+# Delay rate uses 2024 only (training period) and excludes cancelled/diverted
+# flights, matching the modelling target definition in merge_layers.py.
+train_rows_2024 = bts_filtered[
+    (bts_filtered["Year"] == 2024)
+    & (bts_filtered["Cancelled"] == 0)
+    & (bts_filtered["Diverted"] == 0)
+]
+departures_retained = bts_filtered.groupby("Origin").size().rename("departures_retained")
+delay_rate_2024 = (train_rows_2024.groupby("Origin")["DepDel15"].mean() * 100).rename("delay_rate_2024_pct")
+
+a1_airports = (
+    airport_metadata[["iata", "icao", "name", "city", "state"]]
+    .merge(airport_flight_stats[["min_flights_per_day", "avg_flights_per_day"]],
+           left_on="iata", right_index=True, how="left")
+    .merge(departures_retained, left_on="iata", right_index=True, how="left")
+    .merge(delay_rate_2024, left_on="iata", right_index=True, how="left")
+    .sort_values("departures_retained", ascending=False)
+    .reset_index(drop=True)
+)
+save_appendix_table(
+    a1_airports,
+    "a1_retained_airports",
+    f"Retained airports ({len(a1_airports)} airports with at least {min_flights_per_day} "
+    f"departures on their lowest-volume day, 2024--2025). Delay rate refers to the 2024 "
+    f"training period, excluding cancelled and diverted flights.",
+    longtable=True,
+    float_format="%.1f",
+)
 
 # %% 8. Save + summary ------------------------------------------------------
 output_path = processed_data_dir / "bts_processed.parquet"

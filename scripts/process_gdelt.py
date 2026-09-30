@@ -52,6 +52,7 @@ from pathlib import Path
 import pandas as pd
 
 from config import raw_data_path, processed_data_path
+from appendix_utils import save_appendix_table
 
 gdelt_raw_dir = Path(raw_data_path) / "gdelt"
 gdelt_processed_dir = Path(processed_data_path) / "gdelt"
@@ -62,6 +63,7 @@ expected_root_codes = {"14", "17", "18", "20"}
 expected_radius_meters = 50_000
 expected_start_date = pd.Timestamp("2024-01-01") - pd.Timedelta(days=7)
 expected_end_date = pd.Timestamp("2025-12-31")
+source_table = "gdelt-bq.gdeltv2.events_partitioned"  # check against download_gdelt.py
 
 
 keep_cols = [
@@ -195,4 +197,36 @@ gdelt_daily.to_parquet(daily_output_path, index=False)
 print(
     f"\nSaved daily counts: {gdelt_daily.shape[0]:,} (airport, date) rows, "
     f"{gdelt_daily.shape[1]} columns to {daily_output_path}"
+)
+
+# %% 8. Appendix A.6 -- GDELT extraction specification and validation --------
+# The BigQuery SQL itself lives in download_gdelt.py; save it there as
+# appendix/a6_gdelt_query.sql and include it as a code listing.
+geo_types = sorted(gdelt["ActionGeo_Type"].dropna().astype(int).unique()) if "ActionGeo_Type" in gdelt else []
+
+a6_gdelt_spec = pd.DataFrame(
+    [
+        ("Source table", source_table),
+        ("CAMEO root codes", ", ".join(f"{c} ({root_code_labels[c]})" for c in sorted(expected_root_codes))),
+        ("ActionGeo_Type values present", ", ".join(map(str, geo_types))),
+        ("Search radius around airport", f"{expected_radius_meters / 1000:.0f} km (ST_DWITHIN)"),
+        ("Query window (incl. 7-day lag buffer)", f"{expected_start_date.date()} to {expected_end_date.date()}"),
+        ("Observed event dates", f"{gdelt['event_date'].min().date()} to {gdelt['event_date'].max().date()}"),
+        ("Airport-event matches", f"{len(gdelt):,}"),
+        ("Unique events", f"{gdelt['GLOBALEVENTID'].nunique():,}"),
+        ("Events matched to more than one airport", f"{n_multi_airport_events:,}"),
+        ("Duplicate (event, airport) pairs", f"{n_duplicates:,}"),
+        ("Max. distance to airport", f"{max_distance / 1000:.1f} km"),
+        ("Airports with at least one match", f"{gdelt['airport_iata'].nunique():,}"),
+        ("Airports with fewer than 10 matches", f"{len(low_coverage_airports):,}"),
+        ("Airport-days with at least one match", f"{len(gdelt_daily):,}"),
+        ("Max. missing share in any kept column", f"{missing_pct.max():.2f}%"),
+    ],
+    columns=["item", "value"],
+)
+save_appendix_table(
+    a6_gdelt_spec,
+    "a6_gdelt_extraction",
+    "GDELT extraction parameters and validation checks. Counts refer to news "
+    "coverage of events, not to distinct real-world events.",
 )

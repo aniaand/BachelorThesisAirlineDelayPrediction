@@ -1,8 +1,32 @@
+# --- Data (re-creatable from the pipeline) ---
 data/raw/
 data/processed/
+data/final/
 *.csv
 *.parquet
-.DS_Store
-__pycache__/
-.ipynb_checkpoints/
+*.zip
+*.gz
+
+# --- Model artefacts ---
+*.npz
+*.npy
+*.pkl
+*.joblib
+*.ckpt
+*.pt
+*.pth
+*.log
+
+# --- Credentials / secrets ---
 .env
+*credentials*.json
+*service-account*.json
+
+# --- Python / Jupyter ---
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- Editor / OS ---
+.vscode/
+.DS_Store

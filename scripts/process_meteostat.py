@@ -40,9 +40,11 @@ plain script: `python process_meteostat.py`.
 # %% Imports and config ---------------------------------------------------
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from config import raw_data_path, processed_data_path
+from appendix_utils import save_appendix_table
 
 weather_raw_dir = Path(raw_data_path) / "weather"
 weather_processed_dir = Path(processed_data_path) / "weather"
@@ -115,6 +117,32 @@ print(
 )
 if len(flagged_stations):
     print(flagged_stations.index.tolist())
+
+# %% 5b. Appendix A.3 -- airport-to-station mapping and coverage ------------
+# Hour coverage = distinct hours with a row / hours in the downloaded window.
+# Variable availability = share of those rows where the variable is non-missing.
+expected_hours = int((weather["time"].max() - weather["time"].min()) / pd.Timedelta(hours=1)) + 1
+
+a3_stations = weather.groupby("iata").agg(
+    station_id=("station_id", lambda s: ", ".join(sorted(s.dropna().astype(str).unique()))),
+    station_distance_km=("station_distance_km", "mean"),
+    hours_observed=("time", "nunique"),
+)
+a3_stations["hour_coverage_pct"] = 100 * a3_stations["hours_observed"] / expected_hours
+availability = weather[core_vars].notna().groupby(weather["iata"]).mean() * 100
+a3_stations = a3_stations.join(availability.add_suffix("_available_pct"))
+a3_stations["flagged_sparse"] = np.where(a3_stations.index.isin(flagged_stations.index), "yes", "")
+a3_stations = a3_stations.reset_index().sort_values("iata").reset_index(drop=True)
+
+save_appendix_table(
+    a3_stations,
+    "a3_weather_station_mapping",
+    f"Meteostat station assigned to each airport and data coverage ({expected_hours:,} hours "
+    f"in the download window). Flagged stations exceed "
+    f"{station_missingness_flag_threshold:.0%} missingness in at least one core variable.",
+    longtable=True,
+    float_format="%.1f",
+)
 
 # %% 6. Save --------------------------------------------------------------------
 output_path = weather_processed_dir / "weather_processed.parquet"

@@ -43,8 +43,11 @@ subsample.py script, not here.
 # %% Imports & config
 from pathlib import Path
 
+import re
+
 import pandas as pd
 from config import processed_data_path
+from appendix_utils import save_appendix_table
 
 processed_data_path = Path(processed_data_path)
 
@@ -215,6 +218,10 @@ def add_gdelt(df: pd.DataFrame, gdelt_daily: pd.DataFrame) -> pd.DataFrame:
     gdelt_daily = gdelt_daily.copy()
     gdelt_daily["flight_date"] = pd.to_datetime(gdelt_daily["flight_date"])
 
+    # Exclude same-day counts — only lagged (strictly pre-departure) columns
+    lag_only_cols = ["origin", "flight_date"] + [c for c in gdelt_daily.columns if "_lag" in c]
+    gdelt_daily = gdelt_daily[lag_only_cols]
+
     df = df.merge(gdelt_daily, on=["origin", "flight_date"], how="left")
     count_cols = [c for c in df.columns if c.startswith("gdelt_")]
     df[count_cols] = df[count_cols].fillna(0).astype("int32")
@@ -226,6 +233,144 @@ layer_d = add_gdelt(layer_b, gdelt_daily)  # BTS + Meteostat + GDELT
 
 print(f"Layer C (BTS + GDELT): {layer_c.shape}")
 print(f"Layer D (BTS + Meteostat + GDELT): {layer_d.shape}")
+
+# %% Appendix A.2 -- variable dictionary (all columns of the merged layers) ------
+# Layer D holds every column. Descriptions are maintained here by hand; the check
+# below warns if a new column appears without one.
+bts_descriptions = {
+    "flight_date": ("Scheduled flight date", "date"),
+    "year": ("Calendar year; defines the 2024 train / 2025 holdout split", "year"),
+    "month": ("Calendar month", "1-12"),
+    "day_of_week": ("Day of week (1 = Monday)", "1-7"),
+    "reporting_airline": ("Reporting carrier code", "code"),
+    "flight_number": ("Flight number of the reporting carrier", "code"),
+    "origin": ("Origin airport", "IATA code"),
+    "origin_city": ("Origin city", "text"),
+    "origin_state": ("Origin state", "code"),
+    "dest": ("Destination airport", "IATA code"),
+    "dest_city": ("Destination city", "text"),
+    "dest_state": ("Destination state", "code"),
+    "crs_dep_time": ("Scheduled departure time, local", "hhmm"),
+    "crs_elapsed_time": ("Scheduled elapsed time", "minutes"),
+    "distance": ("Great-circle distance between airports", "miles"),
+    "dep_del15": ("Target: departure delay of at least 15 minutes", "0/1"),
+}
+cldc_unit = "oktas"  # confirm against the Meteostat documentation for your version
+weather_descriptions = {
+    "temp": ("Mean air temperature", "°C"),
+    "prcp": ("Total precipitation", "mm"),
+    "wspd": ("Mean wind speed", "km/h"),
+    "cldc": ("Mean cloud cover", cldc_unit),
+}
+gdelt_categories = {
+    "protest": "CAMEO 14 (PROTEST)",
+    "coerce": "CAMEO 17 (COERCE)",
+    "assault": "CAMEO 18 (ASSAULT)",
+    "mass_violence": "CAMEO 20 (MASS VIOLENCE)",
+    "total": "CAMEO 14, 17, 18, 20 combined",
+}
+raw_bts_name = {v: k for k, v in keep_cols.items()}
+
+dictionary_rows = []
+for col in layer_d.columns:
+    if col == "dep_datetime_hour":
+        continue
+    dtype = str(layer_d[col].dtype)
+    if col == "flight_id":
+        dictionary_rows.append((col, "Derived", "-", "Stable flight identifier assigned in merge_layers.py", "id", dtype, "A, B, C, D"))
+    elif col in bts_descriptions:
+        desc, unit = bts_descriptions[col]
+        dictionary_rows.append((col, "BTS", raw_bts_name[col], desc, unit, dtype, "A, B, C, D"))
+    elif (m := re.fullmatch(r"(temp|prcp|wspd|cldc)_(mean|sum)_(\d+)h", col)):
+        desc, unit = weather_descriptions[m.group(1)]
+        dictionary_rows.append((col, "Meteostat", m.group(1),
+                                f"{desc} over the {m.group(3)} h before the scheduled departure hour",
+                                unit, dtype, "B, D"))
+    elif (m := re.fullmatch(r"gdelt_(.+)_count_lag(\d+)d", col)):
+        n_days = int(m.group(2))
+        dictionary_rows.append((col, "GDELT", "EventRootCode",
+                                f"Event records, {gdelt_categories[m.group(1)]}, within 50 km of the origin airport, "
+                                f"summed over the {n_days} day{'s' if n_days > 1 else ''} before the flight date",
+                                "count", dtype, "C, D"))
+    else:
+        print(f"WARNING: no dictionary entry for column {col}")
+
+a2_dictionary = pd.DataFrame(
+    dictionary_rows,
+    columns=["variable", "source", "raw_field", "description", "unit", "dtype", "layers"],
+)
+save_appendix_table(
+    a2_dictionary,
+    "a2_variable_dictionary",
+    "Variables in the merged datasets, their source and the information layers that contain them.",
+    longtable=True,
+)
+
+# %% Appendix A.4 -- monthly data completeness ----------------------------------
+# One row per month: rows after the airport filter, cancelled/diverted exclusions,
+# rows dropped for a missing target, modelled flights, delay rate, and the share of
+# flights with a weather match (weather-layer coverage by month).
+bts_monthly = (
+    bts.assign(excluded=(bts["Cancelled"] == 1) | (bts["Diverted"] == 1))
+    .groupby(["Year", "Month"])
+    .agg(rows_after_airport_filter=("Cancelled", "size"),
+         cancelled=("Cancelled", "sum"),
+         diverted=("Diverted", "sum"),
+         excluded=("excluded", "sum"))
+    .rename_axis(["year", "month"])
+    .astype("int64")
+)
+layer_a_monthly = layer_a.groupby(["year", "month"]).agg(
+    flights_modelled=("dep_del15", "size"),
+    delayed=("dep_del15", "sum"),
+    delay_rate_pct=("dep_del15", "mean"),
+)
+layer_a_monthly["delayed"] = layer_a_monthly["delayed"].astype("int64")
+layer_a_monthly["delay_rate_pct"] *= 100
+weather_match_monthly = (
+    layer_b[f"temp_mean_{lookback_hours}h"].notna()
+    .groupby([layer_b["year"], layer_b["month"]]).mean()
+    .mul(100).rename("weather_match_pct")
+)
+
+a4_monthly = bts_monthly.join(layer_a_monthly).join(weather_match_monthly).reset_index()
+a4_monthly["missing_target"] = (
+    a4_monthly["rows_after_airport_filter"] - a4_monthly["excluded"] - a4_monthly["flights_modelled"]
+)
+a4_monthly = a4_monthly[[
+    "year", "month", "rows_after_airport_filter", "cancelled", "diverted", "missing_target",
+    "flights_modelled", "delayed", "delay_rate_pct", "weather_match_pct",
+]]
+save_appendix_table(
+    a4_monthly,
+    "a4_monthly_completeness",
+    f"Monthly row counts, exclusions, delay rate and weather match rate "
+    f"({lookback_hours} h lookback), 2024--2025.",
+    longtable=True,
+)
+
+# %% Appendix A.5 -- missingness by variable and year ---------------------------
+# Measured on the merged data, i.e. before imputation in feature_engineering.py.
+# GDELT counts are zero-filled at merge, so they are summarised in one row.
+non_gdelt_cols = [c for c in layer_d.columns
+                  if not c.startswith("gdelt_") and c != "dep_datetime_hour"]
+gdelt_cols_merged = [c for c in layer_d.columns if c.startswith("gdelt_")]
+
+missing_by_year = layer_d[non_gdelt_cols].isna().groupby(layer_d["year"]).mean().T * 100
+gdelt_missing = layer_d[gdelt_cols_merged].isna().groupby(layer_d["year"]).mean().T.max() * 100
+missing_by_year.loc[f"gdelt_* ({len(gdelt_cols_merged)} columns)"] = gdelt_missing
+
+a5_missingness = (
+    missing_by_year.rename(columns=lambda y: f"missing_{y}_pct")
+    .rename_axis("variable")
+    .reset_index()
+)
+save_appendix_table(
+    a5_missingness,
+    "a5_missingness_by_year",
+    "Share of missing values per variable in the merged data, by year, before imputation.",
+    longtable=True,
+)
 
 # %% Save the 4 full (unsampled) stages — subsampling happens in subsample.py
 out_dir = processed_data_path / "merged"
