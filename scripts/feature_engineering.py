@@ -56,7 +56,7 @@ variants = ["", "_subsampled"]
 target_col = "dep_del15"
 train_year = 2024
 target_encode_cols = ["origin", "dest"]
-target_encode_smoothing = 10  # higher = pulls low-count airports harder toward the global rate
+target_encode_smoothing = 10
 target_encode_folds = 5  # K-fold out-of-fold encoding for training rows, to avoid self-leakage
 random_state = 42
 
@@ -69,8 +69,8 @@ drop_cols_always = [
     "flight_number",
 ]
 
-imputation_log = []  # filled in engineer_features, saved as appendix table B.1b
-feature_sets = {}  # columns of each full-data feature file, for appendix table B.1
+imputation_log = []
+feature_sets = {}
 
 
 # %% Helpers

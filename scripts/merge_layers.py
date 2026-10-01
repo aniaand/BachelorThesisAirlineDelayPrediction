@@ -1,7 +1,8 @@
 '''
+PROMPT:
 Write a Python script that merges the processed BTS, Meteostat, and GDELT outputs
 (each already produced by its own load/audit/filter/save processing script) into the
-four nested information-layer datasets used for the thesis's layer-ablation design:
+four nested information-layer datasets used for the paper's layer-ablation design:
 Layer A (BTS only), Layer B (BTS + Meteostat), Layer C (BTS + GDELT), and Layer D
 (BTS + Meteostat + GDELT). This script does joins and the aggregations required to
 make those joins possible at the flight level; it does not do feature engineering
@@ -255,7 +256,7 @@ bts_descriptions = {
     "distance": ("Great-circle distance between airports", "miles"),
     "dep_del15": ("Target: departure delay of at least 15 minutes", "0/1"),
 }
-cldc_unit = "oktas"  # confirm against the Meteostat documentation for your version
+cldc_unit = "oktas"
 weather_descriptions = {
     "temp": ("Mean air temperature", "°C"),
     "prcp": ("Total precipitation", "mm"),
