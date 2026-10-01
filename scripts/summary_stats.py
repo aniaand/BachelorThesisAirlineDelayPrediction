@@ -1,19 +1,33 @@
-"""
-summary_stats.py
+'''
+PROMPT:
+Write `scripts/summary_stats.py`.
 
-Chapter 3 data tables/figures plus preliminary bivariate association tests
-(Meteostat / GDELT vs. dep_del15). Uses processed and merged files only.
+Purpose: produce the descriptive statistics for the data chapter. It runs once, after the pipeline is finished, and saves every table through the shared helper `save_appendix_table()` in `scripts/appendix_utils.py`, which writes each table as a CSV and a booktabs LaTeX file.
 
-Outputs (<processed_data_path>/stats/):
-  tables/  t3_3 target distribution, t3_4 weather variables, t3_5 GDELT by CAMEO root,
-           tab_corr_continuous, tab_assoc_binary          (CSV + booktabs .tex)
-  figures/ f3_1 delay rate by hour and month, f3_2 delay rate by precipitation (PDF + CSV)
+Context:
+- Target: `dep_del15` (departure delay ≥ 15 min, binary).
+- Training data is 2024; the test holdout is all of 2025.
+- Optional inputs: the layer D TabPFN subsample and the processed hourly Meteostat file. Skip any part that needs one of these if the file is missing.
 
-Contract: load -> audit -> describe -> test -> save.
-- Association tests and F3.2 use the 2024 training period only (holdout untouched).
-- Bins and indicators built here are exploratory only and are NOT written back
-  to any dataset (feature derivation stays in feature_engineering.py).
-"""
+Outputs:
+- T3.3 Target distribution: flights, delayed flights and delay rate for 2024 (train), 2025 (holdout) and the TabPFN subsample.
+- T3.4 Weather variables (12h aggregates of temperature, precipitation, wind speed and cloud cover): mean, sd, min, max, % missing at flight level and at station-hour level.
+- T3.5 GDELT records by CAMEO root code (14/17/18/20), using previous-day counts per airport-day: records, share, % of airport-days with at least one event, mean records per airport-day, plus a total row. The caption must note that records reflect news coverage, not discrete events.
+- F3.1 Delay rate by scheduled departure hour and by month, with one line each for 2024 and 2025.
+- F3.2 Delay rate by 12h precipitation bin (training period), showing n per bar and the overall 2024 rate as a reference line.
+- F3.3 Excess delay rate by GDELT quintile (prior 3 days), ranked within airport and month, in percentage points vs. the airport-month average (training period).
+
+Requirements:
+- Read paths from `scripts/config.py`. Don't hard-code any paths.
+- Follow the repo pattern: load → compute → save, with `# %%` cell markers so I can run it cell by cell in VS Code.
+- The full dataset is about 16M rows, so read only the columns each table needs (parquet `columns=`).
+- Statistics must only describe the data. Don't fit or transform anything.
+- Give each table a clear name, a caption and a label `tab:<name>`.
+- Keep the code short and readable, in snake_case, with pandas only.
+- At the end, print a list of all saved tables.
+'''
+# 30.09.2026 CET
+# Author: Anna Andruszkiewicz (code and adjustments), Claude Sonnet 5 (code)
 
 # %% imports
 from pathlib import Path
