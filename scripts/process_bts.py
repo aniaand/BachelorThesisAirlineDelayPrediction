@@ -1,5 +1,5 @@
 '''
-Write a Python script (not a notebook) to process raw BTS On-Time Performance data for a flight delay prediction pipeline. It should:
+Write a Python script to process raw BTS On-Time Performance data for a flight delay prediction pipeline. It should:
 
 1. Load monthly BTS files directly from their .zip archives (no separate unzip step) and merge all months into one DataFrame.
 2. Print every column available in the raw data, so the schema can be audited against expectations.

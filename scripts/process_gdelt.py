@@ -5,7 +5,7 @@ The raw file is already a curated column set (not the full GDELT schema), so the
 
 1. Load the raw GDELT events file.
 2. Print every column available, so the schema can be audited against expectations.
-3. Subset to the columns needed downstream, dropping fields that were only pulled for manual QA of the geocoding (raw lat/lon, full place name) now that a computed distance-to-airport field already exists.
+3. Subset to the columns needed downstream, dropping fields that were only pulled for manual check of the geocoding (raw lat/lon, full place name) now that a computed distance-to-airport field already exists.
 4. Report missing value percentage per column.
 5. Run query-correctness sanity checks rather than assuming the upstream filtering worked:
    - Confirm only the intended CAMEO root codes are present in the data (flag anything unexpected), and print the root code distribution.

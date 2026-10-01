@@ -5,9 +5,6 @@ raw_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/raw"
 processed_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/processed"
 final_data_path = "/Users/aniaandruszkiewicz/FS/Thesis/data/final"
 
-# Processed data: small enough to sync via Drive for backup
-data_root = "/Users/aniaandruszkiewicz/FS/Thesis_Data"
-modeling_data_path = os.path.join(data_root, "modeling")
-# GCP project and BigQuery dataset for GDELT download
+#GDELT: cloud storage and BigQuery
 gcp_project_id = "thesis-507219"
 bq_dataset_id = "thesis_data"
