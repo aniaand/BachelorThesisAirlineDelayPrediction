@@ -172,7 +172,6 @@ __pycache__/
 | `*.csv`, `*.parquet`, `*.zip`, `*.gz` | Tabular data and archives anywhere in the repo, incl. `retained_airports.csv` and result summaries | Steps 1–16 |
 | `*.npz`, `*.npy` | Per-flight test probabilities (up to ~100 MB per file, above GitHub's limit) | Steps 11–15 |
 | `*.pkl`, `*.joblib`, `*.ckpt`, `*.pt`, `*.pth`, `*.log` | Saved models, fine-tuning checkpoints and logs | Steps 11–15 |
-| `.env`, `*credentials*.json`, `*service-account*.json` | Tokens and cloud credentials must never be pushed | Create locally |
 | `__pycache__/`, `*.pyc`, `.ipynb_checkpoints/`, `.vscode/`, `.DS_Store` | Python, Jupyter, editor and OS clutter | — |
 
 Because all data and results are ignored, the result tables are not in the repo. To reproduce the thesis tables, re-run steps 11–16. GCP credentials are stored outside the repo by `gcloud auth application-default login`, so they need no ignore rule.
