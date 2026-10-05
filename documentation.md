@@ -184,6 +184,17 @@ A separate search (`fine_tuning_epochs.ipynb`) used a stratified 100,000-row sam
 
 All results are on the full 2025 holdout, with beta = 1.2.
 
+### AUC-ROC per model and layer
+
+| Model | A: BTS | B: +weather | C: +GDELT | D: all |
+|---|---|---|---|---|
+| RF | 0.6731 | 0.6856 | 0.6772 | 0.6860 |
+| RF (Full) | 0.6778 | 0.6888 | 0.6800 | 0.6889 |
+| TabPFN zero-shot | 0.6728 | 0.6820 | 0.6745 | 0.6821 |
+| TabPFN fine-tuned | 0.6738 | 0.6850 | 0.6715 | 0.6824 |
+
+These are the current values (taken from the DeLong output files) and supersede the AUC-ROC columns of the per-layer tables below where they differ.
+
 ### Average per model across the four layers
 
 ![Average metric per model, averaged across all 4 layers](avg_metrics_by_model.png)
@@ -213,7 +224,7 @@ All results are on the full 2025 holdout, with beta = 1.2.
 | C: +GDELT | 0.424 | 0.332 | 0.587 | 0.680 | 0.359 | 0.218 | 0.421 | 0.758 | 2,066s (~34 min) |
 | D: all | 0.431 | 0.342 | 0.584 | 0.689 | 0.370 | 0.230 | 0.418 | 0.763 | 2,268s (~38 min) |
 
-### TabPFN v3.5 zero-shot: subsampled layers
+### TabPFN v3.5 zero-shot: subsampled layers (earlier summary, to be refreshed)
 
 | Layer | F1 | Precision | Recall | AUC-ROC | AUC-PR | MCC | Threshold | Train time |
 |---|---|---|---|---|---|---|---|---|
@@ -222,46 +233,61 @@ All results are on the full 2025 holdout, with beta = 1.2.
 | C: +GDELT | 0.422 | 0.306 | 0.678 | 0.673 | 0.355 | 0.205 | 0.187 | 6,819s (~1h 54m) |
 | D: all | 0.429 | 0.321 | 0.646 | 0.682 | 0.364 | 0.219 | 0.196 | 6,969s (~1h 56m) |
 
-Per-layer values are from the earlier summary file; see the open items about the averaged chart.
 
 ### TabPFN v3.5 fine-tuned, final configuration (lr 3e-5, up to 20 epochs, patience 8)
 
 | Layer | F1 | Precision | Recall | AUC-ROC | AUC-PR | MCC | Threshold | Epochs run (best) | Train time |
 |---|---|---|---|---|---|---|---|---|---|
-| A: BTS | pending | | | | | | | | |
-| B: +weather | pending | | | | | | | | |
+| A: BTS | 0.423 | 0.313 | 0.655 | 0.674 | 0.357 | 0.210 | 0.184 | 20 (17) | 32,192s (~8h 57m) |
+| B: +weather | 0.431 | 0.317 | 0.676 | 0.685 | 0.366 | 0.222 | 0.184 | 20 (19) | 30,801s (~8h 33m) |
 | C: +GDELT | 0.420 | 0.319 | 0.613 | 0.672 | 0.350 | 0.208 | 0.202 | 20 (17) | 36,286s (~10h 5m) |
-| D: all | pending | | | | | | | | |
+| D: all | 0.430 | 0.324 | 0.637 | 0.682 | 0.360 | 0.222 | 0.196 | 20 (19) | 32,830s (~9h 7m) |
 
-Best epoch is counted from 0. For Layer C the validation AUC-ROC rose steadily from 0.7017 (first epoch) to 0.7143 (best epoch) and the run used the full 20 epochs without early stopping. The test AUC-ROC (0.672) is nevertheless no higher than zero-shot (0.673): the gain on the 2024 validation split did not carry over to the 2025 holdout.
+Best epoch is counted from 0. Train time includes fine-tuning plus prediction on the 2025 test set.
+
 
 
 ### Summary of the results
 
-- **Weather (Layer B) gives the most consistent lift.** AUC-ROC improves by about 0.010–0.012 over Layer A for RF and zero-shot TabPFN, with matching gains in F1, AUC-PR and MCC.
-- **GDELT on its own (Layer C) adds little**: +0.004 AUC-ROC for RF and about zero for TabPFN, below the 0.005 minimum used to call a difference meaningful (Section 10).
-- **Combining all sources (Layer D) does not improve on weather alone.** Layer D matches Layer B for RF and is slightly below it for TabPFN.
-- **Model differences are small.** Averaged over layers, AUC-ROC lies between 0.678 and 0.684 and F1 between 0.426 and 0.428 for all four variants. RF (Full) is highest, but its lead over the subsampled RF is only 0.003–0.005 per layer despite 6× more training data.
-- **Fine-tuning adds nothing measurable over zero-shot.** The average AUC-ROC is identical (0.678). Fine-tuning Layer C under the final configuration took about 10 hours, against under 2 hours for zero-shot, with no gain on the holdout.
-
+- **Weather (Layer B) gives the most consistent lift.** AUC-ROC rises by +0.009 to +0.012 over Layer A for all four model variants, which is meaningful in every case (Section 10), with matching gains in F1, AUC-PR and MCC.
+- **GDELT on its own (Layer C) adds nothing meaningful**: the change over Layer A is +0.004 for RF, +0.002 for RF (Full), +0.002 for zero-shot TabPFN and −0.002 for fine-tuned TabPFN.
+- **Combining all sources (Layer D) does not improve on weather alone.** Layer D vs. Layer B is within 0.003 for every model. Layer D's gain over Layer A (+0.009 to +0.013) is therefore carried by the weather features.
+- **Model differences are mostly small, but not all negligible.** RF (Full) is the best variant on every layer (average AUC-ROC 0.684 vs. 0.678–0.680). Its lead over zero-shot TabPFN is meaningful on layers B, C and D (0.0055–0.0069), and over fine-tuned TabPFN on layers C and D (0.0065–0.0084). The subsampled RF is meaningfully ahead of fine-tuned TabPFN only on Layer C (0.0056). Subsampled RF vs. zero-shot TabPFN, and RF (Full) vs. subsampled RF (0.003–0.005), are negligible.
+- **Fine-tuning adds nothing measurable over zero-shot.** The difference is within ±0.003 on every layer and the average AUC-ROC is identical (0.678). Fine-tuning Layer C under the final configuration took about 10 hours, against under 2 hours for zero-shot.
 **Recall/precision difference between RF and TabPFN**: TabPFN's thresholds (about 0.19–0.20) sit at a very different point on its probability scale than RF's (0.42–0.46), and on average TabPFN reaches higher recall and lower precision than RF at similar F1 (zero-shot: recall 0.683, precision 0.310; fine-tuned in between; RF (Full): 0.600 and 0.333). This is a calibration effect, not a quality difference. RF is trained with `class_weight="balanced"`, which pushes its predicted probabilities for the positive class toward 0.5. TabPFN's probabilities are not rebalanced and stay close to the true ~20% delay rate, so a much lower cutoff is needed to reach a comparable operating point. All models are tuned to the same F-beta objective, so they reach similar F1 but resolve the precision/recall trade-off differently. Since the thesis prioritizes recall, this is not a weakness of the TabPFN results.
-
 
 ## 10. Statistical significance: DeLong's test
 
-Pairwise AUC-ROC differences are tested with DeLong's test for correlated ROC curves on the identical 2025 test set. A Bonferroni correction is applied within each family of comparisons (α = 0.05 divided by the number of tests).
+Pairwise AUC-ROC differences are tested with DeLong's test for correlated ROC curves on the identical 2025 test set, within two families: layer vs. layer (per model) and model vs. model (per layer). A Bonferroni correction is applied within each family (α = 0.05 divided by the number of tests), and 95% confidence intervals are reported with the same correction.
 
-With almost six million test flights, even negligible differences become significant. A difference is therefore only called **meaningful if it is significant after correction and at least 0.005 AUC-ROC**. That minimum is more than twice the variation between near-best hyperparameter configurations (at most about 0.002).
+With almost six million test flights, even negligible differences become significant, so each comparison gets a **verdict** based on effect size. The minimum meaningful difference is **0.005 AUC-ROC**, more than twice the variation between near-best hyperparameter configurations (at most about 0.002):
 
-Layer vs. layer, AUC-ROC difference (first minus second), all Bonferroni-significant:
+- **meaningful**: the corrected interval of the difference lies entirely beyond ±0.005
+- **negligible**: the interval lies entirely within ±0.005
+- **inconclusive**: the interval straddles 0.005
 
-| Comparison | RF | TabPFN zero-shot | Meaningful (≥ 0.005)? |
-|---|---|---|---|
-| B − A | +0.012 | +0.010 | yes |
-| C − A | +0.004 | −0.000 | no |
-| D − A | +0.013 | +0.008 | yes |
-| B − C | +0.008 | +0.011 | yes |
-| D − B | +0.000 | −0.002 | no |
-| D − C | +0.009 | +0.008 | yes |
+### Layer vs. layer (AUC-ROC difference, first layer minus second)
 
-Significance flags nearly every comparison, including a difference of −0.0004 (TabPFN zero-shot, Layer C vs. A), which is why the results are read by effect size. Weather adds about 0.01 AUC-ROC consistently; GDELT, the choice of model and fine-tuning each move results by a few thousandths at most.
+| Comparison | RF | RF (Full) | TabPFN zero-shot | TabPFN fine-tuned | Verdict |
+|---|---|---|---|---|---|
+| B − A (weather) | +0.0124 | +0.0110 | +0.0092 | +0.0112 | meaningful (all) |
+| C − A (GDELT) | +0.0040 | +0.0021 | +0.0017 | −0.0023 | negligible (all) |
+| D − A (both) | +0.0129 | +0.0111 | +0.0094 | +0.0086 | meaningful (all) |
+| B − C | +0.0084 | +0.0089 | +0.0075 | +0.0135 | meaningful (all) |
+| D − B | +0.0004 | +0.0001 | +0.0001 | −0.0026 | negligible (all) |
+| D − C | +0.0089 | +0.0090 | +0.0076 | +0.0109 | meaningful (all) |
+
+All comparisons are significant after correction except D − B for RF (Full) and for zero-shot TabPFN, which are negligible and not significant.
+
+### Model vs. model (AUC-ROC difference, first model minus second)
+
+| Comparison | A | B | C | D |
+|---|---|---|---|---|
+| RF (Full) − RF | +0.0047 | +0.0033 | +0.0028 | +0.0029 |
+| RF − TabPFN | +0.0004 | +0.0036 | +0.0027 | +0.0039 |
+| RF − TabPFN fine-tuned | −0.0007 | +0.0006 | **+0.0056** | +0.0036 |
+| TabPFN fine-tuned − TabPFN | +0.0011 | +0.0030 | −0.0029 | +0.0003 |
+| RF (Full) − TabPFN | +0.0051 (inconclusive) | **+0.0069** | **+0.0055** | **+0.0068** |
+| RF (Full) − TabPFN fine-tuned | +0.0040 | +0.0038 | **+0.0084** | **+0.0065** |
+
+Bold marks a meaningful difference; all unmarked differences are negligible except where noted. Nearly every comparison is statistically significant, including differences below 0.001, which is why the results are read by effect size and not by p-value. Weather adds about 0.01 AUC-ROC consistently; GDELT and fine-tuning move results by a few thousandths at most; only RF (Full) separates from the TabPFN variants by a meaningful margin.
