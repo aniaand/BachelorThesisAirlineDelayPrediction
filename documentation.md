@@ -174,10 +174,11 @@ A separate search (`fine_tuning_epochs.ipynb`) used a stratified 100,000-row sam
 - `n_finetune_ctx_plus_query_samples=10,000` (lowered from the 50,000 default, which ran out of GPU memory on a 16 GB card)
 - training on 850,000 rows with the 150,000-row validation split for early stopping and threshold tuning
 
+
 ## 8. Computational setup
 
-- **Local** (Python 3.12, conda environment `thesis`): the data pipeline, both Random Forest tiers and the result analysis. RF fit times are 2–4 minutes per layer on the subsample and 24–38 minutes on the full data.
-- **Kaggle GPU**: all TabPFN notebooks (zero-shot, learning-rate search, fine-tuning), since they need an NVIDIA GPU with CUDA. Zero-shot takes about 1h45 to 1h56 per layer, almost all of it test-set prediction. Fine-tuning is run as four separate notebooks, one per layer, started in parallel; each is a committed run with its own checkpoint folder. A fine-tuning run can take up to about 10 hours per layer (Layer C: 8h 7m of fine-tuning plus about 2h of prediction), close to Kaggle's 12-hour session cap.
+- **Local** (Python 3.12, conda environment `thesis`): the data pipeline, both Random Forest tiers and the result analysis. RF fit times are about 3 minutes per layer on the subsample and 24–38 minutes on the full data.
+- **Kaggle GPU**: all TabPFN notebooks (zero-shot, learning-rate search, fine-tuning), since they need an NVIDIA GPU with CUDA. Zero-shot takes about 1h40 to 1h50 per layer, almost all of it test-set prediction. Fine-tuning is run as four separate notebooks, one per layer, started in parallel; each is a committed run with its own checkpoint folder. A fine-tuning run takes about 8.5 to 10 hours per layer (Layer C, the longest: 8h 7m of fine-tuning plus about 2h of prediction), close to Kaggle's 12-hour session cap.
 - **Outputs** (summary CSVs, per-flight test probabilities, checkpoints) are copied back into `data/final/modeling_results/` (`rf/`, `rf_full/`, `fm/`, `fm_tuned/`). `fm_finetuned_results.ipynb` combines the four fine-tuning runs, and `results.ipynb` builds the comparison tables, DeLong tests and figures.
 
 ## 9. Results
@@ -193,27 +194,17 @@ All results are on the full 2025 holdout, with beta = 1.2.
 | TabPFN zero-shot | 0.6728 | 0.6820 | 0.6745 | 0.6821 |
 | TabPFN fine-tuned | 0.6738 | 0.6850 | 0.6715 | 0.6824 |
 
-These are the current values (taken from the DeLong output files) and supersede the AUC-ROC columns of the per-layer tables below where they differ.
+These are the AUC-ROC columns of the per-layer tables below and the inputs to the DeLong tests in Section 10.
 
-### Average per model across the four layers
-
-![Average metric per model, averaged across all 4 layers](avg_metrics_by_model.png)
-
-| Model | F1 | Precision | Recall | AUC-ROC | AUC-PR | MCC |
-|---|---|---|---|---|---|---|
-| RF | 0.427 | 0.327 | 0.615 | 0.680 | 0.363 | 0.219 |
-| TabPFN zero-shot | 0.426 | 0.310 | 0.683 | 0.678 | 0.362 | 0.213 |
-| TabPFN fine-tuned | 0.426 | 0.318 | 0.645 | 0.678 | 0.358 | 0.215 |
-| RF (Full) | 0.428 | 0.333 | 0.600 | 0.684 | 0.366 | 0.223 |
 
 ### Random Forest: subsampled layers (1M train)
 
 | Layer | F1 | Precision | Recall | AUC-ROC | AUC-PR | MCC | Threshold | OOB accuracy | Fit time |
 |---|---|---|---|---|---|---|---|---|---|
-| A: BTS | 0.422 | 0.313 | 0.647 | 0.673 | 0.357 | 0.208 | 0.446 | 0.686 | 166s |
-| B: +weather | 0.431 | 0.331 | 0.616 | 0.686 | 0.370 | 0.226 | 0.454 | 0.708 | 194s |
-| C: +GDELT | 0.424 | 0.326 | 0.605 | 0.677 | 0.357 | 0.215 | 0.453 | 0.717 | 221s |
-| D: all | 0.430 | 0.337 | 0.593 | 0.686 | 0.367 | 0.226 | 0.455 | 0.723 | 241s |
+| A: BTS | 0.422 | 0.313 | 0.647 | 0.673 | 0.357 | 0.208 | 0.446 | 0.686 | 168s |
+| B: +weather | 0.431 | 0.331 | 0.616 | 0.686 | 0.370 | 0.226 | 0.454 | 0.708 | 205s |
+| C: +GDELT | 0.424 | 0.326 | 0.605 | 0.677 | 0.357 | 0.215 | 0.453 | 0.717 | 163s |
+| D: all | 0.430 | 0.337 | 0.593 | 0.686 | 0.367 | 0.226 | 0.455 | 0.723 | 176s |
 
 ### Random Forest: full dataset (6.06M train)
 
@@ -224,15 +215,16 @@ These are the current values (taken from the DeLong output files) and supersede 
 | C: +GDELT | 0.424 | 0.332 | 0.587 | 0.680 | 0.359 | 0.218 | 0.421 | 0.758 | 2,066s (~34 min) |
 | D: all | 0.431 | 0.342 | 0.584 | 0.689 | 0.370 | 0.230 | 0.418 | 0.763 | 2,268s (~38 min) |
 
-### TabPFN v3.5 zero-shot: subsampled layers (earlier summary, to be refreshed)
+### TabPFN v3.5 zero-shot: subsampled layers
 
 | Layer | F1 | Precision | Recall | AUC-ROC | AUC-PR | MCC | Threshold | Train time |
 |---|---|---|---|---|---|---|---|---|
-| A: BTS | 0.422 | 0.308 | 0.668 | 0.674 | 0.359 | 0.206 | 0.188 | 6,271s (~1h 45m) |
-| B: +weather | 0.430 | 0.315 | 0.678 | 0.684 | 0.369 | 0.221 | 0.187 | 6,413s (~1h 47m) |
-| C: +GDELT | 0.422 | 0.306 | 0.678 | 0.673 | 0.355 | 0.205 | 0.187 | 6,819s (~1h 54m) |
-| D: all | 0.429 | 0.321 | 0.646 | 0.682 | 0.364 | 0.219 | 0.196 | 6,969s (~1h 56m) |
+| A: BTS | 0.422 | 0.309 | 0.663 | 0.673 | 0.356 | 0.206 | 0.192 | 5,945s (~1h 39m) |
+| B: +weather | 0.428 | 0.306 | 0.715 | 0.682 | 0.366 | 0.216 | 0.176 | 6,074s (~1h 41m) |
+| C: +GDELT | 0.424 | 0.308 | 0.680 | 0.674 | 0.357 | 0.209 | 0.192 | 6,567s (~1h 49m) |
+| D: all | 0.430 | 0.315 | 0.673 | 0.682 | 0.367 | 0.219 | 0.189 | 6,707s (~1h 52m) |
 
+Train time is almost entirely prediction on the 5.97M test flights, since zero-shot has no weight updates.
 
 ### TabPFN v3.5 fine-tuned, final configuration (lr 3e-5, up to 20 epochs, patience 8)
 
@@ -243,7 +235,7 @@ These are the current values (taken from the DeLong output files) and supersede 
 | C: +GDELT | 0.420 | 0.319 | 0.613 | 0.672 | 0.350 | 0.208 | 0.202 | 20 (17) | 36,286s (~10h 5m) |
 | D: all | 0.430 | 0.324 | 0.637 | 0.682 | 0.360 | 0.222 | 0.196 | 20 (19) | 32,830s (~9h 7m) |
 
-Best epoch is counted from 0. Train time includes fine-tuning plus prediction on the 2025 test set.
+Best epoch is counted from 0. Train time includes fine-tuning plus prediction on the 2025 test set. None of the four runs stopped early: all used the full 20 epochs, and for layers B and D the best epoch was the last one, so the epoch cap was binding and validation AUC-ROC was still rising slightly when training ended. The best validation AUC-ROC (0.711–0.722) is well above the test AUC-ROC (0.672–0.685), and the test AUC-ROC is within ±0.003 of zero-shot on every layer: the gain on the 2024 validation split did not carry over to the 2025 holdout.
 
 
 
@@ -254,7 +246,10 @@ Best epoch is counted from 0. Train time includes fine-tuning plus prediction on
 - **Combining all sources (Layer D) does not improve on weather alone.** Layer D vs. Layer B is within 0.003 for every model. Layer D's gain over Layer A (+0.009 to +0.013) is therefore carried by the weather features.
 - **Model differences are mostly small, but not all negligible.** RF (Full) is the best variant on every layer (average AUC-ROC 0.684 vs. 0.678–0.680). Its lead over zero-shot TabPFN is meaningful on layers B, C and D (0.0055–0.0069), and over fine-tuned TabPFN on layers C and D (0.0065–0.0084). The subsampled RF is meaningfully ahead of fine-tuned TabPFN only on Layer C (0.0056). Subsampled RF vs. zero-shot TabPFN, and RF (Full) vs. subsampled RF (0.003–0.005), are negligible.
 - **Fine-tuning adds nothing measurable over zero-shot.** The difference is within ±0.003 on every layer and the average AUC-ROC is identical (0.678). Fine-tuning Layer C under the final configuration took about 10 hours, against under 2 hours for zero-shot.
-**Recall/precision difference between RF and TabPFN**: TabPFN's thresholds (about 0.19–0.20) sit at a very different point on its probability scale than RF's (0.42–0.46), and on average TabPFN reaches higher recall and lower precision than RF at similar F1 (zero-shot: recall 0.683, precision 0.310; fine-tuned in between; RF (Full): 0.600 and 0.333). This is a calibration effect, not a quality difference. RF is trained with `class_weight="balanced"`, which pushes its predicted probabilities for the positive class toward 0.5. TabPFN's probabilities are not rebalanced and stay close to the true ~20% delay rate, so a much lower cutoff is needed to reach a comparable operating point. All models are tuned to the same F-beta objective, so they reach similar F1 but resolve the precision/recall trade-off differently. Since the thesis prioritizes recall, this is not a weakness of the TabPFN results.
+- **Layer C fine-tuned is the weakest fine-tuned run** and accounts for most of the meaningful gaps involving the fine-tuned model. It was also run under a different package version and Python version than the other layers (Section 8), so this may partly reflect the environment and should be stated as a caveat.
+
+**Recall/precision difference between RF and TabPFN**: TabPFN's thresholds (about 0.18–0.20) sit at a very different point on its probability scale than RF's (0.42–0.46), and on average TabPFN reaches higher recall and lower precision than RF at similar F1 (zero-shot: recall 0.683, precision 0.310; fine-tuned in between; RF (Full): 0.600 and 0.333). This is a calibration effect, not a quality difference. RF is trained with `class_weight="balanced"`, which pushes its predicted probabilities for the positive class toward 0.5. TabPFN's probabilities are not rebalanced and stay close to the true ~20% delay rate, so a much lower cutoff is needed to reach a comparable operating point. All models are tuned to the same F-beta objective, so they reach similar F1 but resolve the precision/recall trade-off differently. Since the thesis prioritizes recall, this is not a weakness of the TabPFN results.
+
 
 ## 10. Statistical significance: DeLong's test
 
@@ -277,7 +272,6 @@ With almost six million test flights, even negligible differences become signifi
 | D − B | +0.0004 | +0.0001 | +0.0001 | −0.0026 | negligible (all) |
 | D − C | +0.0089 | +0.0090 | +0.0076 | +0.0109 | meaningful (all) |
 
-All comparisons are significant after correction except D − B for RF (Full) and for zero-shot TabPFN, which are negligible and not significant.
 
 ### Model vs. model (AUC-ROC difference, first model minus second)
 
@@ -290,4 +284,3 @@ All comparisons are significant after correction except D − B for RF (Full) an
 | RF (Full) − TabPFN | +0.0051 (inconclusive) | **+0.0069** | **+0.0055** | **+0.0068** |
 | RF (Full) − TabPFN fine-tuned | +0.0040 | +0.0038 | **+0.0084** | **+0.0065** |
 
-Bold marks a meaningful difference; all unmarked differences are negligible except where noted. Nearly every comparison is statistically significant, including differences below 0.001, which is why the results are read by effect size and not by p-value. Weather adds about 0.01 AUC-ROC consistently; GDELT and fine-tuning move results by a few thousandths at most; only RF (Full) separates from the TabPFN variants by a meaningful margin.
