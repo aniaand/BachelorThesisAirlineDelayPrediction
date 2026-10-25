@@ -230,27 +230,61 @@ axes[0].set_ylabel("Delay rate (%)")
 axes[0].legend(frameon=False)
 save_fig(fig, "f3_1_delay_rate_hour_month")
 
-# %% F3.2 delay rate by precipitation bins (training period)
-prcp_bin = pd.cut(train["prcp_sum_12h"], bins=prcp_bins, labels=prcp_bin_labels)
-f3_2 = (train.groupby(prcp_bin, observed=False)[target]
-             .agg(flights="count", delay_rate="mean")
-             .reset_index()
-             .rename(columns={"prcp_sum_12h": "prcp_bin_mm"}))
-f3_2.to_csv(fig_dir / "f3_2_delay_rate_by_precipitation.csv", index=False)
 
-fig, ax = plt.subplots(figsize=(5, 3.2))
-bars = ax.bar(f3_2["prcp_bin_mm"].astype(str), 100 * f3_2["delay_rate"], color="steelblue")
-for bar, n in zip(bars, f3_2["flights"]):
-    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"n={n / 1e3:,.0f}k",
-            ha="center", va="bottom", fontsize=7)
-ax.axhline(100 * y.mean(), ls="--", lw=1, color="grey", label="overall 2024 rate")
-ax.set_xlabel("Precipitation, 12h sum (mm)")
-ax.set_ylabel("Delay rate (%)")
-ax.legend(frameon=False, fontsize=8)
-ax.grid(axis="y", alpha=0.3)
-save_fig(fig, "f3_2_delay_rate_precipitation")
+# %% F3.2–F3.3 delay rate by weather bins (training period)
+def bin_delay_rate(col, bins, labels):
+    """Delay rate and flight count per bin of one weather feature."""
+    binned = pd.cut(train[col], bins=bins, labels=labels, include_lowest=True)
+    return (train.groupby(binned, observed=False)[target]
+                 .agg(flights="count", delay_rate="mean")
+                 .reset_index()
+                 .rename(columns={col: "bin"}))
 
-# %% F3.3 excess delay rate by GDELT coverage, within airport (training period)
+
+def plot_bins(ax, df, xlabel, title, color="steelblue"):
+    bars = ax.bar(df["bin"].astype(str), 100 * df["delay_rate"], color=color)
+    for bar, n in zip(bars, df["flights"]):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"n={n / 1e3:,.0f}k",
+                ha="center", va="bottom", fontsize=7)
+    ax.axhline(100 * y.mean(), ls="--", lw=1, color="grey", label="overall 2024 rate")
+    ax.set_xlabel(xlabel)
+    ax.set_title(title, fontsize=10)
+    ax.grid(axis="y", alpha=0.3)
+
+
+panels = {
+    "precipitation": ("prcp_sum_12h", prcp_bins, prcp_bin_labels,
+                      "Precipitation, 12h sum (mm)", "(a) Precipitation"),
+    "cloud_cover":   ("cldc_mean_12h", [0, 2, 4, 6, 7, 8.01],
+                      ["0–2", "2–4", "4–6", "6–7", "7–8"],
+                      "Cloud cover, 12h mean (oktas)", "(b) Cloud cover"),
+    "temperature":   ("temp_mean_12h", [-np.inf, -10, 0, 10, 20, 30, np.inf],
+                      ["< −10", "−10–0", "0–10", "10–20", "20–30", "> 30"],
+                      "Temperature, 12h mean (°C)", "(a) Temperature"),
+    "wind_speed":    ("wspd_mean_12h", [0, 10, 20, 30, 40, np.inf],
+                      ["0–10", "10–20", "20–30", "30–40", "> 40"],
+                      "Wind speed, 12h mean (km/h)", "(b) Wind speed"),
+}
+
+# compute + save CSVs
+binned = {}
+for key, (col, bins, labels, *_ ) in panels.items():
+    binned[key] = bin_delay_rate(col, bins, labels)
+    binned[key].to_csv(fig_dir / f"f3_delay_rate_{key}.csv", index=False)
+
+# one figure per pair
+for fig_name, pair in [("f3_2_delay_rate_precipitation_cloud", ["precipitation", "cloud_cover"]),
+                       ("f3_3_delay_rate_temperature_wind",    ["temperature", "wind_speed"])]:
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3.4), sharey=True)
+    for ax, key in zip(axes, pair):
+        _, _, _, xlabel, title = panels[key]
+        plot_bins(ax, binned[key], xlabel, title)
+    axes[0].set_ylabel("Delay rate (%)")
+    axes[0].legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    save_fig(fig, fig_name)
+
+# %% F3.4 excess delay rate by GDELT coverage, within airport (training period)
 # Counts are ranked within each airport, so each airport is compared with itself.
 # y-axis: delay rate minus the airport's own 2024 delay rate, in percentage points.
 gdelt_fig_col = "gdelt_total_count_lag3d"
@@ -261,20 +295,20 @@ gdelt_bin = pd.cut(within_rank, bins=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
                    labels=quintile_labels, include_lowest=True)
 excess = y - train.groupby([origin_col, month_col])[target].transform("mean")
 
-f3_3 = (pd.DataFrame({"bin": gdelt_bin, "excess": excess})
+f3_4 = (pd.DataFrame({"bin": gdelt_bin, "excess": excess})
         .groupby("bin", observed=False)["excess"]
         .agg(flights="count", excess_delay_pp="mean")
         .reset_index())
-f3_3["excess_delay_pp"] *= 100
-f3_3.to_csv(fig_dir / "f3_3_excess_delay_by_gdelt.csv", index=False)
+f3_4["excess_delay_pp"] *= 100
+f3_4.to_csv(fig_dir / "f3_4_excess_delay_by_gdelt.csv", index=False)
 
 fig, ax = plt.subplots(figsize=(5, 3.2))
-ax.bar(f3_3["bin"].astype(str), f3_3["excess_delay_pp"], color="steelblue")
+ax.bar(f3_4["bin"].astype(str), f3_4["excess_delay_pp"], color="steelblue")
 ax.axhline(0, lw=1, color="grey")
 ax.set_xlabel("GDELT event records, prior 3 days (quintile within airport & month)")
 ax.set_ylabel("Delay rate vs. airport-month average (pp)")
 ax.grid(axis="y", alpha=0.3)
-save_fig(fig, "f3_3_excess_delay_gdelt")
+save_fig(fig, "f3_4_excess_delay_gdelt")
 
 # %% done
 print(f"\nall outputs written to {out_dir}")
