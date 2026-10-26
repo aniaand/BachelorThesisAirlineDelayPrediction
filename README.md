@@ -35,10 +35,11 @@ thesis/
 │   ├── feature_engineering.py
 │   └── summary_stats.py
 ├── notebooks/
+│   ├── clogistic_regression.ipynb      # logistic regression baseline
 │   ├── classical_ML_full.ipynb         # Random Forest, full
 │   ├── classical_ML_subsample.ipynb    # Random Forest, subsampled
 │   ├── FM_zero-shot.ipynb              # TabPFN zero-shot
-│   ├── fine_tuning_lr_epochs.ipynb        # TabPFN fine-tuning learning-rate search
+│   ├── fine_tuning_lr_epochs.ipynb     # TabPFN fine-tuning learning-rate search
 │   ├── FM_fine_tuned_layer_a.ipynb     # TabPFN fine-tuning, layer A  ┐ identical except for the
 │   ├── FM_fine_tuned_layer_b.ipynb     # TabPFN fine-tuning, layer B  │ layer they run; started
 │   ├── FM_fine_tuned_layer_c.ipynb     # TabPFN fine-tuning, layer C  │ in parallel on Kaggle
@@ -51,6 +52,7 @@ thesis/
     └── final/
         ├── layer_*.parquet        # merged + engineered layer files
         └── modeling_results/
+            ├── lr/                # LR summary
             ├── rf/                # RF subsampled summaries + *_probs.npz
             ├── rf_full/           # RF full-data summary
             ├── fm/                # TabPFN zero-shot summaries + *_y_proba.npy
@@ -117,13 +119,14 @@ Run the steps in this order. Each step reads only outputs from earlier steps, ex
 | 8 | `subsample.py` | local | Layer files → stratified ~1M-row training subsample (same flights across all layers) |
 | 9 | `feature_engineering.py` | local | Target encoding of airport (fit on 2024 only), sin/cos encoding of month / weekday / hour, lag and rolling features for weather and GDELT |
 | 10 | `summary_stats.py` | local | Layer D → descriptive tables and figures for the data chapter |
-| 11 | `classical_ML_subsample.ipynb` | local | Random Forest on the subsampled data → `modeling_results/rf/` |
-| 12 | `classical_ML_full.ipynb` | local | Random Forest on the full data → `modeling_results/rf_full/` |
-| 13 | `FM_zero-shot.ipynb` | Kaggle, GPU | TabPFN zero-shot on the subsample → `modeling_results/fm/` |
-| 14 | `fine_tuning_lr_epochs.ipynb` | Kaggle, GPU | Learning-rate search for fine-tuning (layer D, 100k sample; learning rates 3e-5 to 3e-7 in half-decade steps, up to 30 epochs, early-stopping patience 8) → `modeling_results/fm_tuned/finetune_lr_search_layer_d.csv` |
-| 15 | `FM_fine_tuned_layer_{a,b,c,d}.ipynb` | Kaggle, GPU, **4 notebooks in parallel** | Fine-tuned TabPFN on the subsample, one notebook per layer, all with the learning rate and early-stopping settings from step 14 → per layer: summary CSV, test probabilities and checkpoint folder in `modeling_results/fm_tuned/` |
-| 16 | `fm_finetuned_results.ipynb` | local (CPU) | The four per-layer summaries and checkpoint folders → one combined summary table, a checkpoint inventory, and a consistency check between the two |
-| 17 | `results.ipynb` | local | Combined comparison table (including the combined fine-tuned summary from step 16), DeLong tests (model vs. model and layer vs. layer), figures |
+| 11 | `logistic_regression.ipynb` | local | Logistic Regression on the full data → `modeling_results/lr/` |
+| 12 | `classical_ML_subsample.ipynb` | local | Random Forest on the subsampled data → `modeling_results/rf/` |
+| 13 | `classical_ML_full.ipynb` | local | Random Forest on the full data → `modeling_results/rf_full/` |
+| 14 | `FM_zero-shot.ipynb` | Kaggle, GPU | TabPFN zero-shot on the subsample → `modeling_results/fm/` |
+| 15 | `fine_tuning_lr_epochs.ipynb` | Kaggle, GPU | Learning-rate search for fine-tuning (layer D, 100k sample; learning rates 3e-5 to 3e-7 in half-decade steps, up to 30 epochs, early-stopping patience 8) → `modeling_results/fm_tuned/finetune_lr_search_layer_d.csv` |
+| 16 | `FM_fine_tuned_layer_{a,b,c,d}.ipynb` | Kaggle, GPU, **4 notebooks in parallel** | Fine-tuned TabPFN on the subsample, one notebook per layer, all with the learning rate and early-stopping settings from step 14 → per layer: summary CSV, test probabilities and checkpoint folder in `modeling_results/fm_tuned/` |
+| 17 | `fm_finetuned_results.ipynb` | local (CPU) | The four per-layer summaries and checkpoint folders → one combined summary table, a checkpoint inventory, and a consistency check between the two |
+| 18 | `results.ipynb` | local | Combined comparison table (including the combined fine-tuned summary from step 16), DeLong tests (model vs. model and layer vs. layer), figures |
 
 **Class imbalance:** handled with class weighting during training plus a decision threshold tuned after training. No oversampling is used. TabPFN has no class-weighting option, so for TabPFN only the tuned threshold applies.
 
